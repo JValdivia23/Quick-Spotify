@@ -40,6 +40,7 @@ Item {
 
   readonly property var defaultSettingValues: ({
     deviceName: "Omarchy Spotify",
+    builtInReceiver: "On",
     idleShutdownMinutes: 15,
     showMiniPlayer: "On",
     showVinylRecord: "Off",
@@ -61,6 +62,13 @@ Item {
   property bool settingsReady: false
 
   readonly property string deviceName: String(settings.deviceName || "Omarchy Spotify").trim() || "Omarchy Spotify"
+  readonly property bool builtInReceiverEnabled: String(settings.builtInReceiver || "On") !== "Off"
+  onBuiltInReceiverEnabledChanged: {
+    if (!builtInReceiverEnabled) {
+      cancelVisibleLocalDeviceRefresh()
+      if (daemonManager.running) daemonManager.stop()
+    }
+  }
   readonly property int idleShutdownMinutes: Math.max(0, Math.min(1440,
     Math.floor(Number(settings.idleShutdownMinutes) || 0)))
   readonly property bool showMiniPlayer: String(settings.showMiniPlayer || "On") !== "Off"
@@ -513,7 +521,7 @@ Item {
   function normalizedSettings(values) {
     var next = defaults()
     var source = values || {}
-    var keys = ["deviceName", "idleShutdownMinutes", "showMiniPlayer",
+    var keys = ["deviceName", "builtInReceiver", "idleShutdownMinutes", "showMiniPlayer",
       "showVinylRecord", "shortcutPlayer", "shortcutHints", "showLyrics", "showArtwork", "showTrackTitle", "showArtistName",
       "showPausedTrack", "scrollBarText", "scrollSpeed", "maxBarTextWidth",
       "fixedBarWidth", "audioQuality", "clientId"]
@@ -522,6 +530,7 @@ Item {
       if (source[key] !== undefined) next[key] = source[key]
     }
     next.deviceName = String(next.deviceName || "Omarchy Spotify").trim() || "Omarchy Spotify"
+    next.builtInReceiver = String(next.builtInReceiver || "On") === "Off" ? "Off" : "On"
     next.idleShutdownMinutes = Math.max(0, Math.min(1440,
       Math.floor(Number(next.idleShutdownMinutes) || 0)))
     next.showMiniPlayer = String(next.showMiniPlayer || "On") === "Off" ? "Off" : "On"
@@ -940,7 +949,10 @@ Item {
   property bool localPlaybackStopped: false
 
   function ensureVisibleLocalReceiver() {
-    if (localPlaybackStopped || daemonManager.terminalFailure) return
+    if (!builtInReceiverEnabled || localPlaybackStopped || daemonManager.terminalFailure) {
+      cancelVisibleLocalDeviceRefresh()
+      return
+    }
     var action = Api.visibleLocalReceiverAction(uiVisible,
       fullyConnected && daemonManager.credentialsAvailable,
       daemonManager.running, daemonManager.busy)
@@ -954,7 +966,10 @@ Item {
   }
 
   function refreshVisibleLocalDevice() {
-    if (localPlaybackStopped || daemonManager.terminalFailure) return
+    if (!builtInReceiverEnabled || localPlaybackStopped || daemonManager.terminalFailure) {
+      cancelVisibleLocalDeviceRefresh()
+      return
+    }
     var action = Api.visibleLocalReceiverAction(uiVisible,
       fullyConnected && daemonManager.credentialsAvailable,
       daemonManager.running, daemonManager.busy)
@@ -3028,6 +3043,26 @@ Item {
     if (target && !target.local) {
       localActivationRequested = false
       sendPendingPlayback(Api.playbackTargetDeviceId(target, selectedDeviceExplicit))
+      return
+    }
+    if (!builtInReceiverEnabled) {
+      if (!devicesLoaded && !devicesLoading) {
+        loadDevices(function() {
+          if (playbackSerial !== root.pendingPlaybackSerial || !root.pendingPlaybackBody) return
+          var remoteTarget = root.chooseDevice()
+          if (remoteTarget && !remoteTarget.local) {
+            root.localActivationRequested = false
+            root.sendPendingPlayback(Api.playbackTargetDeviceId(
+              remoteTarget, root.selectedDeviceExplicit))
+            return
+          }
+          root.fail("No Spotify Connect device available. Select one in Devices.")
+          root.clearPendingPlayback()
+        })
+        return
+      }
+      fail("No Spotify Connect device available. Select one in Devices.")
+      clearPendingPlayback()
       return
     }
     if (!daemonManager.credentialsChecked && (!target || target.local)) {
