@@ -4,7 +4,7 @@
 
 Quick Spotify brings the full Spotify experience into a fast, native Quickshell + Rust application using **~60 MB of RAM** instead of **~950 MB** for the Chromium-based desktop client. Adapted from [stappmus/Omarchy-Spotify](https://github.com/stappmus/Omarchy-Spotify), Quick Spotify decouples the UI from Omarchy so it runs cleanly on **Arch / CachyOS, Fedora, NixOS, Debian / Ubuntu, and openSUSE** alongside **Noctalia, Waybar, Hyprland, Sway, Niri, KDE, or GNOME**—while preserving 100% compatibility with `omarchy plugin add`.
 
-Requires a personal **Spotify Premium** account (no Spotify Developer Client ID or API keys needed).
+Requires a personal **Spotify Premium** account. Browsing, search, library management, and controlling external Spotify Connect devices require **no Developer Client ID or API keys**; for **local audio playback on this computer** (when Spotify blocks legacy `librespot` audio keys), Quick Spotify includes built-in setup for a free personal [Spotify Soloist API key](https://developer.spotify.com/documentation/soloist).
 
 ![Vietnam War Music playlist in Quick Spotify](docs/screenshots/vietnam-war-playlist.png)
 
@@ -14,11 +14,14 @@ Requires a personal **Spotify Premium** account (no Spotify Developer Client ID 
 
 - **~60 MB RAM total**: Native `Quickshell` UI + `librespot`-backed Rust engine (`omarchy-spotify-backend`) supervised on-demand via `systemd --user`.
 - **Dual-Mode Architecture**:
-  - **Standalone Linux Mode (`quick-spotify`)**: Runs independently with bundled MIT `Commons`/`Ui` QML components, multi-monitor mini-player dropdown, full 980×720 window, MPRIS integration, and CLI IPC (`quick-spotify toggle | mini | play-pause | status`).
+  - **Standalone Linux Mode (`quick-spotify`)**: Runs independently with bundled MIT `Commons`/`Ui` QML components, multi-monitor mini-player dropdown, full 980×720 window (`QS_APP_ID=quick-spotify`), and CLI IPC (`quick-spotify toggle | mini | play-pause | status`).
   - **Omarchy 4 Plugin Mode**: Retains `manifest.json` and root QML entrypoints with zero symlinks, passing `omarchy plugin validate` out of the box.
+- **Built-in Managed Spotify Soloist Support (Lossless + Audio-Key Fix)**:
+  - In-app and CLI (`quick-spotify setup-soloist`) setup for [Spotify Soloist](https://developer.spotify.com/documentation/soloist) when Spotify rejects legacy `librespot` eSDK v1 audio keys (`error audio key 0 1`).
+  - Auto-downloads `soloist`, manages it on demand via `systemd --user` (`quick-spotify-soloist.service`), streams live playback state over `soloist ctl trace`, and executes transport/volume controls directly via `soloist ctl` (0ms latency, zero Web API rate limits).
+  - Ships a lightweight **Soloist → MPRIS2 D-Bus bridge** (`org.mpris.MediaPlayer2.quick_spotify`) so **Noctalia Media, lock screens, Waybar, GNOME/KDE applets, and `XF86Audio*` media keys** see live artwork, metadata, progress, and controls even when the Quick Spotify window is closed.
 - **Live Dynamic Theming**: Watches `~/.config/quick-spotify/colors.toml` (with automatic fallback to `~/.local/state/omarchy/current/theme/colors.toml`) for live hot-reload from **Noctalia**, **Matugen**, **Wallust**, **Pywal**, or **Omarchy**.
-- **Full Library & Connect**: Browser-paired native sign-in, playlists, Liked Songs, Discover, albums/artists, queue management, up to 320 kbps audio, and Spotify Connect speaker/Sonos control.
-- **Built-in Managed Spotify Soloist Support (Lossless + Audio-Key Fix)**: One-paste in-app setup for [Spotify Soloist](https://developer.spotify.com/documentation/soloist) when Spotify blocks legacy `librespot` eSDK v1 audio keys—auto-downloads `soloist`, runs it on demand via `systemd --user`, and pairs locally over loopback with **zero phone or UFW firewall rules**.
+- **Full Library & Connect**: Browser-paired native sign-in, playlists, Liked Songs, Discover, albums/artists, queue management, up to 320 kbps / Lossless audio, and Spotify Connect speaker/Sonos control.
 
 ---
 
@@ -42,18 +45,18 @@ cd ~/dev/Quick-Spotify
 
 - **Arch / CachyOS**:
   ```bash
-  sudo pacman -S quickshell qt6-declarative qt6-svg qt6-5compat libsecret openssl python avahi wl-clipboard xdg-utils rust libpulse pkgconf
+  sudo pacman -S quickshell qt6-declarative qt6-svg qt6-5compat libsecret openssl python python-gobject avahi wl-clipboard xdg-utils rust libpulse pkgconf
   ```
 - **Fedora**:
   ```bash
-  sudo dnf install quickshell qt6-qtdeclarative qt6-qtsvg qt6-qt5compat libsecret openssl python3 avahi-tools wl-clipboard xdg-utils cargo pulseaudio-libs-devel pkgconf
+  sudo dnf install quickshell qt6-qtdeclarative qt6-qtsvg qt6-qt5compat libsecret openssl python3 python3-gobject avahi-tools wl-clipboard xdg-utils cargo pulseaudio-libs-devel pkgconf
   ```
 - **Debian / Ubuntu** *(plus Quickshell)*:
   ```bash
-  sudo apt install qt6-declarative-dev libqt6svg6 libsecret-tools openssl python3 avahi-utils wl-clipboard xdg-utils cargo libpulse-dev libssl-dev pkg-config
+  sudo apt install qt6-declarative-dev libqt6svg6 libsecret-tools openssl python3 python3-gi avahi-utils wl-clipboard xdg-utils cargo libpulse-dev libssl-dev pkg-config
   ```
 - **NixOS**:
-  Include `quickshell`, `kdePackages.qtdeclarative`, `kdePackages.qtsvg`, `libsecret`, `openssl`, `python3`, `avahi`, `wl-clipboard`, `xdg-utils`, `cargo`, `libpulseaudio`, `pkg-config`.
+  Include `quickshell`, `kdePackages.qtdeclarative`, `kdePackages.qtsvg`, `libsecret`, `openssl`, `python3`, `python3Packages.pygobject3`, `avahi`, `wl-clipboard`, `xdg-utils`, `cargo`, `libpulseaudio`, `pkg-config`.
 
 </details>
 
@@ -62,6 +65,20 @@ cd ~/dev/Quick-Spotify
 ```bash
 omarchy plugin add https://github.com/JValdivia23/Quick-Spotify.git --enable
 ```
+
+---
+
+## Local Playback with Spotify Soloist (Recommended)
+
+If playing a track on the built-in `librespot` receiver fails with *"Spotify did not provide the audio key required to play this track on this computer"*, switch to Spotify's official **Soloist** receiver right inside Quick Spotify:
+
+1. Open **Settings → Spotify Soloist** (or run `quick-spotify setup-soloist`).
+2. Click **1. Get Soloist API Key** (`https://developer.spotify.com/documentation/soloist`), paste your key, and click **2. Save & Activate**. Quick Spotify downloads `soloist`, stores the key privately (`~/.local/share/soloist/credentials/api_key`, `0600`), disables the legacy `librespot` receiver, and starts `quick-spotify-soloist.service` + the MPRIS2 bridge.
+3. **One-time Connect pairing**: Soloist (`Core Playback SDK 2.10+`) uses DPoP-bound Connect auth and needs one initial transfer from an official Spotify client to persist its cloud session (`~/.local/share/soloist/settings`):
+   - **Desktop (zero firewall changes):** Click **3. Open Spotify Desktop to Pair** (if `spotify-launcher` / `spotify` is installed), select **Quick Spotify** in Devices once over local loopback, wait ~3 seconds for Quick Spotify to show **`Soloist receiver active & paired`**, then close Spotify Desktop.
+   - **Phone on LAN:** Select **Quick Spotify** in the Spotify mobile app once *(if `ufw` is active, temporarily allow LAN traffic on Soloist's ZeroConf TCP port logged by `journalctl --user -u quick-spotify-soloist.service`)*.
+
+After that one-time handshake, Soloist reconnects automatically over Spotify Cloud on every startup without needing Spotify Desktop or open firewall ports.
 
 ---
 

@@ -65,12 +65,12 @@ print_distro_hints() {
   cat >&2 <<'EOF'
 
 Install required dependencies for your distribution:
-  Arch / CachyOS : sudo pacman -S quickshell qt6-declarative qt6-svg qt6-5compat libsecret openssl python avahi wl-clipboard xdg-utils rust libpulse pkgconf
-  Fedora         : sudo dnf install quickshell qt6-qtdeclarative qt6-qtsvg qt6-qt5compat libsecret openssl python3 avahi-tools wl-clipboard xdg-utils cargo pulseaudio-libs-devel pkgconf
-  Debian / Ubuntu: sudo apt install qt6-declarative-dev libqt6svg6 libsecret-tools openssl python3 avahi-utils wl-clipboard xdg-utils cargo libpulse-dev libssl-dev pkg-config
+  Arch / CachyOS : sudo pacman -S quickshell qt6-declarative qt6-svg qt6-5compat libsecret openssl python python-gobject avahi wl-clipboard xdg-utils rust libpulse pkgconf
+  Fedora         : sudo dnf install quickshell qt6-qtdeclarative qt6-qtsvg qt6-qt5compat libsecret openssl python3 python3-gobject avahi-tools wl-clipboard xdg-utils cargo pulseaudio-libs-devel pkgconf
+  Debian / Ubuntu: sudo apt install qt6-declarative-dev libqt6svg6 libsecret-tools openssl python3 python3-gi avahi-utils wl-clipboard xdg-utils cargo libpulse-dev libssl-dev pkg-config
                    (plus Quickshell from upstream packages / Nix / source)
-  openSUSE       : sudo zypper install quickshell qt6-declarative-imports libsecret-tools openssl python3 avahi-utils wl-clipboard xdg-utils cargo libpulse-devel
-  NixOS          : nix-shell -p quickshell kdePackages.qtdeclarative kdePackages.qtsvg libsecret openssl python3 avahi wl-clipboard xdg-utils cargo libpulseaudio pkg-config
+  openSUSE       : sudo zypper install quickshell qt6-declarative-imports libsecret-tools openssl python3 python3-gobject avahi-utils wl-clipboard xdg-utils cargo libpulse-devel
+  NixOS          : nix-shell -p quickshell kdePackages.qtdeclarative kdePackages.qtsvg libsecret openssl python3 python3Packages.pygobject3 avahi wl-clipboard xdg-utils cargo libpulseaudio pkg-config
 EOF
 }
 
