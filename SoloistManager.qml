@@ -18,7 +18,9 @@ Item {
   property bool installed: false
   property bool keyConfigured: false
   property bool running: false
+  property bool loggedIn: false
   property bool unitReady: false
+  property bool desktopHelperAvailable: false
   property string version: ""
   property bool statusChecked: false
   property bool busy: setupProc.running || startProc.running || stopProc.running || clearProc.running
@@ -28,6 +30,7 @@ Item {
 
   signal setupSucceeded()
   signal setupFailed(string reason)
+  signal paired()
   signal clipboardLoaded(string text)
 
   function safeError(value) {
@@ -104,12 +107,26 @@ Item {
     clipboardProc.running = true
   }
 
+  function activateLocal() {
+    if (!pluginDir || activateProc.running) return
+    activateProc.command = ["/usr/bin/env", "bash",
+      pluginDir + "/scripts/soloist-runtime.sh", "activate"]
+    activateProc.running = true
+  }
+
+  function launchPairHelper() {
+    if (!pluginDir || helperProc.running) return
+    helperProc.command = ["/usr/bin/env", "bash",
+      pluginDir + "/scripts/soloist-runtime.sh", "launch-pair-helper"]
+    helperProc.running = true
+  }
+
   onPluginDirChanged: if (pluginDir) refresh()
   onDeviceNameChanged: if (pluginDir && unitReady) configureDeviceName(deviceName)
 
   Timer {
     id: pollTimer
-    interval: 10000
+    interval: root.running && !root.loggedIn ? 3000 : 10000
     repeat: true
     running: !!root.pluginDir && (root.keyConfigured || root.running)
     onTriggered: root.refresh()
@@ -122,6 +139,7 @@ Item {
       waitForEnd: true
     }
     onExited: function(code) {
+      var wasLoggedIn = root.loggedIn
       root.statusChecked = true
       if (code !== 0) return
       var parsed = Api.parseJson(statusStdout.text, null)
@@ -129,8 +147,12 @@ Item {
       root.installed = parsed.installed === true
       root.keyConfigured = parsed.keyConfigured === true
       root.running = parsed.running === true
+      root.loggedIn = parsed.loggedIn === true
       root.unitReady = parsed.unitReady === true
+      root.desktopHelperAvailable = parsed.desktopHelperAvailable === true
       root.version = String(parsed.version || "")
+      if (!wasLoggedIn && root.loggedIn)
+        root.paired()
     }
   }
 
@@ -197,8 +219,17 @@ Item {
     onExited: {
       root.running = false
       root.keyConfigured = false
+      root.loggedIn = false
       root.refresh()
     }
+  }
+
+  Process {
+    id: activateProc
+  }
+
+  Process {
+    id: helperProc
   }
 
   Process {

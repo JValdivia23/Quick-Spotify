@@ -468,7 +468,8 @@ class ConnectHelperTests(unittest.TestCase):
             )
             executable.chmod(0o755)
             with mock.patch.dict(os.environ, {"PATH": directory + os.pathsep + os.environ["PATH"]}), \
-                 mock.patch.object(helper, "AVAHI_BROWSE_TIMEOUT_SECONDS", 0.15):
+                 mock.patch.object(helper, "AVAHI_BROWSE_TIMEOUT_SECONDS", 0.15), \
+                 mock.patch.object(helper, "local_soloist_avahi_lines", return_value=""):
                 self.assertEqual(helper.browse_spotify_connect(), "resolved receiver\n")
 
     def test_browse_spotify_connect_fails_when_timeout_has_no_stdout(self) -> None:

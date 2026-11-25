@@ -6635,7 +6635,7 @@ Item {
 
               Text {
                 width: parent.width
-                text: "Recommended when Spotify blocks legacy librespot audio keys. Downloads Spotify's official Soloist receiver automatically and pairs locally without phone or firewall setup."
+                text: "Recommended when Spotify blocks legacy librespot audio keys. Runs Spotify's official Soloist receiver locally; after saving your API key, select this speaker once in the official Spotify app to store your session permanently."
                 color: root.muted
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
@@ -6657,19 +6657,26 @@ Item {
                     : (root.service.soloist.setupBusy
                       ? "Downloading & activating Spotify Soloist…"
                       : (root.service.soloist.running
-                        ? "Soloist receiver active"
-                          + (root.service.soloist.version ? " · v" + root.service.soloist.version : "")
+                        ? (root.service.soloist.loggedIn
+                          ? "Soloist receiver active & paired"
+                            + (root.service.soloist.version ? " · v" + root.service.soloist.version : "")
+                          : "Soloist running"
+                            + (root.service.soloist.version ? " (v" + root.service.soloist.version + ")" : "")
+                            + " · One-time pairing needed: select \"" + root.service.deviceName
+                            + "\" once in official Spotify Desktop or mobile app")
                         : (root.service.soloist.keyConfigured
                           ? "Soloist API key saved · receiver idle"
                           : "No Soloist API key configured yet")))
-                  color: root.service && root.service.soloist.running ? root.accent : root.foreground
+                  color: root.service && root.service.soloist.running && root.service.soloist.loggedIn
+                    ? root.accent : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   wrapMode: Text.WordWrap
                 }
               }
 
-              Row {
+              Flow {
+                width: parent.width
                 spacing: Style.space(7)
 
                 Button {
@@ -6678,6 +6685,17 @@ Item {
                   foreground: root.foreground
                   tooltipText: "Open developer.spotify.com/documentation/soloist in your browser"
                   onClicked: if (root.service) root.service.soloist.openDocs()
+                }
+
+                Button {
+                  visible: root.service && root.service.soloist.running && !root.service.soloist.loggedIn
+                    && root.service.soloist.desktopHelperAvailable
+                  text: "3. Open Spotify Desktop to Pair"
+                  iconText: "󰓇"
+                  foreground: root.foreground
+                  selected: true
+                  tooltipText: "Launch official Spotify Desktop once, pick '" + (root.service ? root.service.deviceName : "Quick Spotify") + "' in Devices, then close Spotify Desktop"
+                  onClicked: if (root.service) root.service.soloist.launchPairHelper()
                 }
 
                 Button {

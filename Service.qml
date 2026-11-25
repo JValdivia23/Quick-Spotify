@@ -965,17 +965,14 @@ Item {
 
   function findSoloistCandidate() {
     var targetName = String(deviceName || "Quick Spotify").trim().toLowerCase()
-    var firstUnactivated = null
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
-      if (!d || d.local || !d.id) continue
+      if (!d || d.local || !d.id || d.activationRequired) continue
       var dName = String(d.name || "").trim().toLowerCase()
       if (dName === targetName || dName.indexOf("soloist") >= 0)
         return d
-      if (d.activationRequired && !firstUnactivated)
-        firstUnactivated = d
     }
-    return firstUnactivated
+    return null
   }
 
   function ensureVisibleSoloistReceiver() {
@@ -983,7 +980,8 @@ Item {
       return
     if (!soloistManager.running && !soloistManager.busy)
       soloistManager.start()
-    soloistDiscoveryTimer.restart()
+    if (soloistManager.loggedIn)
+      soloistDiscoveryTimer.restart()
   }
 
   function setupSoloistKey(rawKey, targetName) {
@@ -2984,7 +2982,6 @@ Item {
   function fallbackRemoteDevice() {
     var preferredName = String(deviceName || "").trim().toLowerCase()
     var firstAvailable = null
-    var firstActivatable = null
     for (var i = 0; i < devices.length; i++) {
       var candidate = devices[i]
       if (!candidate || candidate.local || !candidate.id) continue
@@ -2992,12 +2989,9 @@ Item {
       if (!candidate.restricted && !candidate.activationRequired) {
         if (preferredName && cName === preferredName) return candidate
         if (!firstAvailable) firstAvailable = candidate
-      } else if (candidate.activationRequired && soloistReceiverEnabled) {
-        if (preferredName && cName === preferredName) firstActivatable = candidate
-        else if (!firstActivatable) firstActivatable = candidate
       }
     }
-    return firstAvailable || firstActivatable
+    return firstAvailable
   }
 
   function beginConnectAuthorization(device) {
@@ -3145,6 +3139,8 @@ Item {
       if (!devicesLoaded && !devicesLoading) {
         if (soloistReceiverEnabled && soloistManager.keyConfigured && !soloistManager.running)
           soloistManager.start()
+        if (soloistReceiverEnabled && soloistManager.loggedIn)
+          soloistManager.activateLocal()
         spotifyConnectManager.refresh()
         loadDevices(function() {
           if (playbackSerial !== root.pendingPlaybackSerial || !root.pendingPlaybackBody) return
@@ -3158,12 +3154,18 @@ Item {
               root.sendPendingPlayback(remoteTarget.id)
             return
           }
-          root.fail("No Spotify Connect device available. Select one in Devices.")
+          if (root.soloistReceiverEnabled && root.soloistManager.running && !root.soloistManager.loggedIn)
+            root.fail("Finish one-time Soloist pairing: select '" + root.deviceName + "' once in official Spotify app (see Settings)")
+          else
+            root.fail("No Spotify Connect device available. Select one in Devices.")
           root.clearPendingPlayback()
         })
         return
       }
-      fail("No Spotify Connect device available. Select one in Devices.")
+      if (soloistReceiverEnabled && soloistManager.running && !soloistManager.loggedIn)
+        fail("Finish one-time Soloist pairing: select '" + deviceName + "' once in official Spotify app (see Settings)")
+      else
+        fail("No Spotify Connect device available. Select one in Devices.")
       clearPendingPlayback()
       return
     }
@@ -4408,7 +4410,8 @@ Item {
     interval: 1200
     repeat: false
     onTriggered: {
-      if (!root.soloistReceiverEnabled || !root.soloistManager.running) return
+      if (!root.soloistReceiverEnabled || !root.soloistManager.running || !root.soloistManager.loggedIn) return
+      root.soloistManager.activateLocal()
       spotifyConnectManager.refresh()
       root.loadDevices(function() {
         var candidate = root.findSoloistCandidate()
@@ -4426,7 +4429,17 @@ Item {
     pluginDir: root.pluginDir
     deviceName: root.deviceName
     onSetupSucceeded: {
-      root.succeed("Spotify Soloist running — connecting local speaker…")
+      if (soloistManager.loggedIn) {
+        root.succeed("Spotify Soloist active and ready")
+        soloistDiscoveryTimer.restart()
+      } else {
+        root.autoPairSoloistRequested = false
+        root.succeed("Soloist started — select '" + root.deviceName + "' once in official Spotify app to finish pairing")
+      }
+    }
+    onPaired: {
+      root.autoPairSoloistRequested = true
+      root.succeed("Spotify Soloist paired and ready for local playback!")
       soloistDiscoveryTimer.restart()
     }
     onSetupFailed: reason => root.fail(reason)

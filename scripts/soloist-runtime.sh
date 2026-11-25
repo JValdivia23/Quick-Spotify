@@ -151,15 +151,30 @@ case $cmd in
     if systemctl --user is-active --quiet "$unit_name" 2>/dev/null; then
       running=true
     fi
+    logged_in=false
+    if [[ $running == true && -n $bin_path ]]; then
+      ctl_out=$("$bin_path" ctl -D "$soloist_data_dir" status 2>/dev/null || true)
+      if printf '%s\n' "$ctl_out" | grep -q 'logged in:[[:space:]]*yes'; then
+        logged_in=true
+      fi
+    elif [[ -s "$soloist_data_dir/settings" ]]; then
+      logged_in=true
+    fi
+    desktop_helper=false
+    if command -v spotify-launcher >/dev/null 2>&1 || command -v spotify >/dev/null 2>&1; then
+      desktop_helper=true
+    fi
     dev_name=$(read_device_name)
     python3 -c 'import json,sys; print(json.dumps({
       "installed": sys.argv[1] == "true",
       "keyConfigured": sys.argv[2] == "true",
       "running": sys.argv[3] == "true",
-      "version": sys.argv[4],
-      "deviceName": sys.argv[5],
-      "unitReady": sys.argv[6] == "true"
-    }))' "$installed" "$key_configured" "$running" "$version" "$dev_name" "$([[ -f $unit_file ]] && echo true || echo false)"
+      "loggedIn": sys.argv[4] == "true",
+      "version": sys.argv[5],
+      "deviceName": sys.argv[6],
+      "unitReady": sys.argv[7] == "true",
+      "desktopHelperAvailable": sys.argv[8] == "true"
+    }))' "$installed" "$key_configured" "$running" "$logged_in" "$version" "$dev_name" "$([[ -f $unit_file ]] && echo true || echo false)" "$desktop_helper"
     ;;
 
   install)
@@ -259,6 +274,23 @@ case $cmd in
     systemctl --user stop "$unit_name" 2>/dev/null || true
     chmod -R u+rwX,go= "$soloist_data_dir" 2>/dev/null || true
     rm -rf -- "$soloist_data_dir/credentials" "$soloist_data_dir/soloist.api_key" "$soloist_data_dir"/*key* 2>/dev/null || true
+    ;;
+
+  activate)
+    bin_path=$(resolve_soloist_bin || true)
+    if [[ -n $bin_path ]] && systemctl --user is-active --quiet "$unit_name" 2>/dev/null; then
+      "$bin_path" ctl -D "$soloist_data_dir" activate >/dev/null 2>&1 || true
+    fi
+    ;;
+
+  launch-pair-helper)
+    if command -v spotify-launcher >/dev/null 2>&1; then
+      nohup spotify-launcher >/dev/null 2>&1 &
+    elif command -v spotify >/dev/null 2>&1; then
+      nohup spotify >/dev/null 2>&1 &
+    else
+      xdg-open "https://open.spotify.com" >/dev/null 2>&1 &
+    fi
     ;;
 
   clipboard)
