@@ -40,6 +40,7 @@ stage_shell() {
 }
 
 export QUICK_SPOTIFY_ROOT="$APP_ROOT"
+export QS_APP_ID="${QS_APP_ID:-quick-spotify}"
 
 qs_bin=$(command -v qs || command -v quickshell || true)
 [[ -n $qs_bin ]] || {

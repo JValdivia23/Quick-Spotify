@@ -120,6 +120,7 @@ Terminal=false
 Categories=AudioVideo;Audio;Music;Player;
 Keywords=spotify;music;player;quickshell;connect;
 StartupNotify=false
+StartupWMClass=quick-spotify
 Actions=MiniPlayer;PlayPause;Next;Previous;
 
 [Desktop Action MiniPlayer]
