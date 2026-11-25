@@ -126,7 +126,9 @@ download_soloist() {
 }
 
 key_is_configured() {
-  [[ -s "$soloist_data_dir/soloist.api_key" ]] || compgen -G "$soloist_data_dir/*key*" >/dev/null 2>&1
+  [[ -s "$soloist_data_dir/soloist.api_key" ]] \
+    || compgen -G "$soloist_data_dir/*key*" >/dev/null 2>&1 \
+    || compgen -G "$soloist_data_dir/credentials/*" >/dev/null 2>&1
 }
 
 cmd=${1:-status}
@@ -200,11 +202,13 @@ case $cmd in
 
     umask 077
     install -d -m 700 -- "$soloist_data_dir"
+    chmod -R u+rwX,go= "$soloist_data_dir" 2>/dev/null || true
     printf '%s\n' "$api_key" | "$bin_path" setup-api-key -D "$soloist_data_dir" >/dev/null
     api_key=""
-    chmod 600 "$soloist_data_dir"/* 2>/dev/null || true
+    chmod -R u+rwX,go= "$soloist_data_dir" 2>/dev/null || true
 
     systemctl --user stop omarchy-spotify.service omarchy-spotifyd.service 2>/dev/null || true
+    systemctl --user reset-failed "$unit_name" 2>/dev/null || true
     systemctl --user restart "$unit_name"
 
     for (( i = 0; i < 30; i++ )); do
@@ -243,6 +247,7 @@ case $cmd in
       exit 3
     fi
     systemctl --user stop omarchy-spotify.service omarchy-spotifyd.service 2>/dev/null || true
+    systemctl --user reset-failed "$unit_name" 2>/dev/null || true
     systemctl --user start "$unit_name"
     ;;
 
@@ -252,7 +257,8 @@ case $cmd in
 
   clear-key)
     systemctl --user stop "$unit_name" 2>/dev/null || true
-    rm -f -- "$soloist_data_dir/soloist.api_key" "$soloist_data_dir"/*key* 2>/dev/null || true
+    chmod -R u+rwX,go= "$soloist_data_dir" 2>/dev/null || true
+    rm -rf -- "$soloist_data_dir/credentials" "$soloist_data_dir/soloist.api_key" "$soloist_data_dir"/*key* 2>/dev/null || true
     ;;
 
   clipboard)
