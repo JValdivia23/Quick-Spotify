@@ -61,6 +61,9 @@ write_env_file() {
 
 install_runner_and_unit() {
   install -d -m 700 -- "$runtime_dir" "$soloist_data_dir" "$soloist_cache_dir" "$unit_dir"
+  if [[ -f "$source_root/scripts/soloist-mpris-bridge.py" ]]; then
+    install -m 755 -- "$source_root/scripts/soloist-mpris-bridge.py" "$runtime_dir/soloist-mpris-bridge.py"
+  fi
   local runner_tmp
   runner_tmp=$(mktemp "$runtime_dir/.run-soloist.XXXXXX")
   cat >"$runner_tmp" <<'EOF'
@@ -73,12 +76,45 @@ bin="$HOME/.local/lib/quick-spotify/soloist"
 if [[ ! -x "$bin" ]]; then
   bin=$(command -v soloist)
 fi
-exec "$bin" -v \
+bridge="$HOME/.local/lib/quick-spotify/soloist-mpris-bridge.py"
+bridge_pid=""
+soloist_pid=""
+cleanup() {
+  if [[ -n "$soloist_pid" ]]; then
+    kill -TERM "$soloist_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$bridge_pid" ]]; then
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$soloist_pid" ]]; then
+    wait "$soloist_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$bridge_pid" ]]; then
+    wait "$bridge_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup INT TERM
+"$bin" -v \
   -n "${SOLOIST_DEVICE_NAME:-Quick Spotify}" \
   -D "$data_dir" \
   -C "$cache_dir" \
   -z 1024 \
-  -w 127.0.0.1:0
+  -w 127.0.0.1:0 &
+soloist_pid=$!
+if [[ -x "$bridge" ]] && command -v python3 >/dev/null 2>&1; then
+  python3 "$bridge" \
+    --soloist-bin "$bin" \
+    --data-dir "$data_dir" \
+    --identity "${SOLOIST_DEVICE_NAME:-Quick Spotify}" >/dev/null 2>&1 &
+  bridge_pid=$!
+fi
+status=0
+wait "$soloist_pid" || status=$?
+if [[ -n "$bridge_pid" ]]; then
+  kill -TERM "$bridge_pid" 2>/dev/null || true
+  wait "$bridge_pid" 2>/dev/null || true
+fi
+exit "$status"
 EOF
   chmod 755 "$runner_tmp"
   mv -f -- "$runner_tmp" "$runner_bin"
