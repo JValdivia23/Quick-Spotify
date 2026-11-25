@@ -6711,12 +6711,15 @@ Item {
                   id: soloistKeyField
                   width: Math.max(Style.space(180), parent.width - pasteKeyBtn.width - saveSoloistBtn.width - parent.spacing * 2)
                   foreground: root.foreground
-                  echoMode: TextInput.Password
+                  password: true
                   placeholderText: root.service && root.service.soloist.keyConfigured
                     ? "Replace saved Soloist API key…"
                     : "Paste Spotify Soloist API key…"
                   text: root.draftSoloistApiKey
-                  onTextEdited: root.draftSoloistApiKey = text
+                  onTextChanged: {
+                    if (root.draftSoloistApiKey !== text)
+                      root.draftSoloistApiKey = text
+                  }
                   onAccepted: if (saveSoloistBtn.enabled) saveSoloistBtn.clicked()
                 }
 
@@ -6726,22 +6729,29 @@ Item {
                   iconText: "󰆒"
                   foreground: root.foreground
                   enabled: root.service && !root.service.soloist.busy
-                  tooltipText: "Paste Soloist API key from Wayland/X11 clipboard"
-                  onClicked: if (root.service) root.service.soloist.readClipboard()
+                  tooltipText: "Paste Soloist API key from clipboard"
+                  onClicked: {
+                    soloistKeyField.forceActiveFocus()
+                    soloistKeyField.selectAll()
+                    soloistKeyField.paste()
+                    if (!soloistKeyField.text.trim() && root.service)
+                      root.service.soloist.readClipboard()
+                  }
                 }
 
                 Button {
                   id: saveSoloistBtn
+                  readonly property string effectiveKey: String(soloistKeyField.text || root.draftSoloistApiKey || "").trim()
                   text: root.service && root.service.soloist.setupBusy
                     ? "Activating…" : "2. Save & Activate"
                   iconText: "󰄬"
                   foreground: root.foreground
-                  selected: root.draftSoloistApiKey.trim().length >= 16
+                  selected: effectiveKey.length >= 16
                   enabled: root.service && !root.service.soloist.busy
-                    && root.draftSoloistApiKey.trim().length >= 16
+                    && effectiveKey.length >= 16
                   onClicked: {
                     if (root.service)
-                      root.service.setupSoloistKey(root.draftSoloistApiKey, root.draftDeviceName)
+                      root.service.setupSoloistKey(effectiveKey, root.draftDeviceName)
                   }
                 }
               }

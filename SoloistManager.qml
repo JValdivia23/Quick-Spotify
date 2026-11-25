@@ -61,7 +61,6 @@ Item {
     lastError = ""
     pendingApiKey = trimmed
     var cleanName = String(targetDeviceName || deviceName || "Quick Spotify").trim() || "Quick Spotify"
-    setupStderr.text = ""
     setupProc.command = ["/usr/bin/env", "bash",
       pluginDir + "/scripts/soloist-runtime.sh", "setup-key",
       "--device-name", cleanName]
@@ -72,7 +71,6 @@ Item {
   function start() {
     if (!pluginDir || !keyConfigured || startProc.running || setupProc.running) return
     lastError = ""
-    startStderr.text = ""
     startProc.command = ["/usr/bin/env", "bash",
       pluginDir + "/scripts/soloist-runtime.sh", "start"]
     startProc.running = true
@@ -101,7 +99,6 @@ Item {
 
   function readClipboard() {
     if (!pluginDir || clipboardProc.running) return
-    clipboardStdout.text = ""
     clipboardProc.command = ["/usr/bin/env", "bash",
       pluginDir + "/scripts/soloist-runtime.sh", "clipboard"]
     clipboardProc.running = true
