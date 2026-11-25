@@ -53,16 +53,23 @@ while (( $# > 0 )); do
 done
 
 if (( install_spotifyd )) && ! command -v spotifyd >/dev/null 2>&1; then
-  command -v pacman >/dev/null 2>&1 || {
-    echo "setup.sh: --install-spotifyd is supported only on pacman-based Omarchy systems" >&2
+  if command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --needed spotifyd
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y spotifyd
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get install -y spotifyd
+  elif command -v zypper >/dev/null 2>&1; then
+    sudo zypper install -y spotifyd
+  else
+    echo "setup.sh: automatic spotifyd installation requires pacman, dnf, apt-get, or zypper" >&2
     exit 1
-  }
-  sudo pacman -S --needed spotifyd
+  fi
 fi
 
-for command_name in secret-tool openssl socat xdg-open systemctl awk cmp install python3 avahi-browse sha256sum; do
+for command_name in secret-tool openssl xdg-open systemctl awk cmp install python3 avahi-browse sha256sum; do
   command -v "$command_name" >/dev/null 2>&1 || {
-    echo "setup.sh: required Omarchy base command is missing: $command_name" >&2
+    echo "setup.sh: required base command is missing: $command_name" >&2
     exit 1
   }
 done

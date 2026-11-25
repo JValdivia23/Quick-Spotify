@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_root() {
+  if [[ -n ${QUICK_SPOTIFY_ROOT:-} && -f "${QUICK_SPOTIFY_ROOT}/standalone/shell.qml" ]]; then
+    printf '%s\n' "$QUICK_SPOTIFY_ROOT"
+    return 0
+  fi
+  local script_path
+  script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+  local candidate
+  candidate=$(CDPATH= cd -- "$(dirname -- "$script_path")/../.." && pwd)
+  if [[ -f "$candidate/standalone/shell.qml" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  local share_candidate="${XDG_DATA_HOME:-$HOME/.local/share}/quick-spotify"
+  if [[ -f "$share_candidate/standalone/shell.qml" ]]; then
+    printf '%s\n' "$share_candidate"
+    return 0
+  fi
+  if [[ -f "/usr/share/quick-spotify/standalone/shell.qml" ]]; then
+    printf '%s\n' "/usr/share/quick-spotify"
+    return 0
+  fi
+  echo "quick-spotify: could not locate standalone/shell.qml" >&2
+  exit 1
+}
+
+APP_ROOT=$(resolve_root)
+SHELL_DIR="$APP_ROOT/standalone"
+
+qs_bin=$(command -v qs || command -v quickshell || true)
+[[ -n $qs_bin ]] || {
+  echo "quick-spotify: quickshell (qs) is not installed" >&2
+  exit 1
+}
+
+ipc_call() {
+  "$qs_bin" -p "$SHELL_DIR" ipc call quick.spotify "$@" 2>/dev/null
+}
+
+is_running() {
+  [[ $(ipc_call ping || true) == *"pong"* ]]
+}
+
+ensure_daemon() {
+  if is_running; then
+    return 0
+  fi
+  "$qs_bin" -n -d -p "$SHELL_DIR" >/dev/null 2>&1
+  local i
+  for (( i = 0; i < 60; i++ )); do
+    if is_running; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "quick-spotify: timed out waiting for Quickshell host to start" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: quick-spotify [COMMAND]
+
+Commands:
+  toggle          Toggle configured player (default: Full player)
+  full | open     Toggle the full Spotify window
+  mini            Toggle the dropdown mini-player on the focused monitor
+  summon [JSON]   Open the full player with optional JSON payload
+  close           Close any open full or mini player surface
+  play-pause      Toggle playback on active local or Connect device
+  next            Skip to next track
+  previous        Return to previous track
+  volume-up       Raise Spotify volume by 5%
+  volume-down     Lower Spotify volume by 5%
+  mute            Toggle mute on Spotify volume
+  status          Print current playback state as JSON
+  daemon          Run the Quickshell host in the foreground
+  restart         Restart the background Quickshell host
+  quit            Stop the background Quickshell host
+EOF
+}
+
+cmd=${1:-toggle}
+shift || true
+
+case $cmd in
+  toggle)
+    ensure_daemon
+    ipc_call toggle >/dev/null
+    ;;
+  full|open)
+    ensure_daemon
+    ipc_call full >/dev/null
+    ;;
+  mini)
+    ensure_daemon
+    ipc_call mini >/dev/null
+    ;;
+  summon)
+    ensure_daemon
+    ipc_call summon "${1:-{}}" >/dev/null
+    ;;
+  close)
+    if is_running; then
+      ipc_call close >/dev/null
+    fi
+    ;;
+  play-pause)
+    ensure_daemon
+    ipc_call playPause >/dev/null
+    ;;
+  next)
+    ensure_daemon
+    ipc_call next >/dev/null
+    ;;
+  prev|previous)
+    ensure_daemon
+    ipc_call previous >/dev/null
+    ;;
+  volume-up)
+    ensure_daemon
+    ipc_call volumeUp >/dev/null
+    ;;
+  volume-down)
+    ensure_daemon
+    ipc_call volumeDown >/dev/null
+    ;;
+  mute)
+    ensure_daemon
+    ipc_call mute >/dev/null
+    ;;
+  status)
+    if is_running; then
+      ipc_call status
+    else
+      printf '%s\n' '{"playing":false,"hasMedia":false,"title":"","artist":"","album":"","artUrl":"","volume":0}'
+    fi
+    ;;
+  daemon)
+    exec "$qs_bin" -n -p "$SHELL_DIR"
+    ;;
+  quit|stop)
+    "$qs_bin" kill -p "$SHELL_DIR" >/dev/null 2>&1 || true
+    ;;
+  restart)
+    "$qs_bin" kill -p "$SHELL_DIR" >/dev/null 2>&1 || true
+    sleep 0.2
+    ensure_daemon
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "quick-spotify: unknown command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

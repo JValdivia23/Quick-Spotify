@@ -66,7 +66,11 @@ echo 'Quickshell asynchronous speaker control integration passed.'
 
 mkdir -p "$test_root/app/plugin" "$test_root/state"
 cp "$source_root/"*.qml "$source_root/"*.js "$test_root/app/plugin/"
-cp -r /usr/share/omarchy/shell/Commons /usr/share/omarchy/shell/Ui "$test_root/app/"
+if [[ -d /usr/share/omarchy/shell/Commons && -d /usr/share/omarchy/shell/Ui ]]; then
+  cp -r /usr/share/omarchy/shell/Commons /usr/share/omarchy/shell/Ui "$test_root/app/"
+else
+  cp -r "$source_root/standalone/Commons" "$source_root/standalone/Ui" "$test_root/app/"
+fi
 cp "$source_root/tests/integration/AppSmoke.qml" "$test_root/app/shell.qml"
 if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
   # Service/authentication tests still use real Quickshell without a compositor.

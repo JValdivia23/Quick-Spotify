@@ -67,12 +67,12 @@ Item {
     // constructed. Build path-dependent commands at launch so an initial
     // empty binding cannot run /scripts/playback-runtime.sh and report 127.
     if (!binaryCheck.running) {
-      binaryCheck.command = ["/usr/bin/bash",
+      binaryCheck.command = ["/usr/bin/env", "bash",
         pluginDir + "/scripts/playback-runtime.sh", "check"]
       binaryCheck.running = true
     }
     if (!unitCheck.running) {
-      unitCheck.command = ["/usr/bin/bash",
+      unitCheck.command = ["/usr/bin/env", "bash",
         pluginDir + "/scripts/playback-runtime.sh", "unit"]
       unitCheck.running = true
     }
@@ -110,7 +110,7 @@ Item {
     // Build this path at launch. pluginDir is assigned after the child Process
     // exists, and a stale initial binding can otherwise run /scripts/... and
     // incorrectly report that a saved playback authorization is missing.
-    credentialsCheck.command = ["/usr/bin/bash",
+    credentialsCheck.command = ["/usr/bin/env", "bash",
       pluginDir + "/scripts/playback-runtime.sh", "credentials"]
     credentialsCheck.running = true
   }

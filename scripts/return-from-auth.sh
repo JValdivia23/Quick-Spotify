@@ -33,9 +33,14 @@ close_playback_callback_tab() {
 }
 
 return_to_spotify() {
-  command -v omarchy-shell >/dev/null 2>&1 || return 0
-  omarchy-shell -q shell summon quickshell.spotify '{"tab":"search"}' \
-    >/dev/null 2>&1 || true
+  if command -v omarchy-shell >/dev/null 2>&1; then
+    omarchy-shell -q shell summon quickshell.spotify '{"tab":"search"}' \
+      >/dev/null 2>&1 || true
+  elif command -v quick-spotify >/dev/null 2>&1; then
+    quick-spotify summon '{"tab":"search"}' >/dev/null 2>&1 || true
+  else
+    return 0
+  fi
 
   command -v hyprctl >/dev/null 2>&1 || return 0
   command -v jq >/dev/null 2>&1 || return 0
