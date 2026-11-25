@@ -4,7 +4,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Theme
-import ".." as Plugin
+import "plugin" as Plugin
 
 ShellRoot {
   id: root

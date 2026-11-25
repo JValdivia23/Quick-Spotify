@@ -29,18 +29,20 @@ fi
 
 lint_import_root=$(mktemp -d)
 trap 'rm -rf -- "$lint_import_root"' EXIT
-mkdir -p "$lint_import_root/qs"
+mkdir -p "$lint_import_root/qs" "$lint_import_root/app/plugin"
 if [[ -d /usr/share/omarchy/shell/Commons && -d /usr/share/omarchy/shell/Ui ]]; then
   cp -r /usr/share/omarchy/shell/Commons /usr/share/omarchy/shell/Ui "$lint_import_root/qs/"
 else
   cp -r "$source_root/standalone/Commons" "$source_root/standalone/Ui" "$lint_import_root/qs/"
 fi
+cp "$source_root/"*.qml "$source_root/"*.js "$lint_import_root/app/plugin/"
+cp "$source_root/standalone/shell.qml" "$lint_import_root/app/shell.qml"
 
 "$qmllint_bin" -I "$lint_import_root" Api.js OAuth.js AuthManager.qml \
   NativeSession.qml SpotifyApi.qml SearchController.qml FilterScanController.qml SpotifyConnectManager.qml DaemonManager.qml BackendClient.qml Service.qml \
   BarWidget.qml PlaybackSlider.qml ArtistLinks.qml MediaByline.qml MediaRow.qml MediaCollection.qml \
   ArtistSearchSection.qml LyricsInstallPrompt.qml RetryImage.qml ShortcutHint.qml \
-  TransportButton.qml Panel.qml standalone/shell.qml
+  TransportButton.qml Panel.qml "$lint_import_root/app/shell.qml"
 
 QT_QPA_PLATFORM=offscreen "$qml_test_runner" \
   -input tests \

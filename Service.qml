@@ -23,6 +23,8 @@ Item {
   readonly property string pluginId: manifest && manifest.id
     ? String(manifest.id) : "quickshell.spotify"
   readonly property string pluginDir: {
+    var rootOverride = String(Quickshell.env("QUICK_SPOTIFY_ROOT") || "").trim()
+    if (rootOverride) return rootOverride.replace(/\/$/, "")
     var url = String(Qt.resolvedUrl("./"))
     return url.indexOf("file://") === 0
       ? decodeURIComponent(url.slice(7)).replace(/\/$/, "") : ""

@@ -28,7 +28,18 @@ resolve_root() {
 }
 
 APP_ROOT=$(resolve_root)
-SHELL_DIR="$APP_ROOT/standalone"
+CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/quick-spotify"
+SHELL_DIR="$CACHE_ROOT/shell"
+
+stage_shell() {
+  mkdir -p "$SHELL_DIR/plugin"
+  cp -u "$APP_ROOT/"*.qml "$APP_ROOT/"*.js "$SHELL_DIR/plugin/"
+  rm -rf "$SHELL_DIR/Commons" "$SHELL_DIR/Ui"
+  cp -r "$APP_ROOT/standalone/Commons" "$APP_ROOT/standalone/Ui" "$SHELL_DIR/"
+  cp -u "$APP_ROOT/standalone/shell.qml" "$SHELL_DIR/shell.qml"
+}
+
+export QUICK_SPOTIFY_ROOT="$APP_ROOT"
 
 qs_bin=$(command -v qs || command -v quickshell || true)
 [[ -n $qs_bin ]] || {
@@ -37,17 +48,18 @@ qs_bin=$(command -v qs || command -v quickshell || true)
 }
 
 ipc_call() {
-  "$qs_bin" -p "$SHELL_DIR" ipc call quick.spotify "$@" 2>/dev/null
+  "$qs_bin" ipc -p "$SHELL_DIR" call quick.spotify "$@" 2>/dev/null
 }
 
 is_running() {
-  [[ $(ipc_call ping || true) == *"pong"* ]]
+  [[ -d "$SHELL_DIR" ]] && [[ $(ipc_call ping || true) == *"pong"* ]]
 }
 
 ensure_daemon() {
   if is_running; then
     return 0
   fi
+  stage_shell
   "$qs_bin" -n -d -p "$SHELL_DIR" >/dev/null 2>&1
   local i
   for (( i = 0; i < 60; i++ )); do
@@ -140,6 +152,7 @@ case $cmd in
     fi
     ;;
   daemon)
+    stage_shell
     exec "$qs_bin" -n -p "$SHELL_DIR"
     ;;
   quit|stop)
@@ -147,6 +160,7 @@ case $cmd in
     ;;
   restart)
     "$qs_bin" kill -p "$SHELL_DIR" >/dev/null 2>&1 || true
+    rm -rf "$SHELL_DIR"
     sleep 0.2
     ensure_daemon
     ;;
