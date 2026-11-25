@@ -67,6 +67,8 @@ Item {
   readonly property bool soloistReceiverEnabled: String(settings.soloistReceiver || "Off") === "On"
   onBuiltInReceiverEnabledChanged: {
     if (!builtInReceiverEnabled) {
+      localDeviceId = ""
+      localRuntimeDeviceName = ""
       cancelVisibleLocalDeviceRefresh()
       if (daemonManager.running) daemonManager.stop()
     }
@@ -190,13 +192,16 @@ Item {
       && String(remoteTrack.id || "") === currentTrackId))
     ? remoteTrack.albumItem : null
   readonly property var remoteDevice: remotePlayback ? remotePlayback.device : null
-  readonly property bool remotePlaybackIsLocal: !!remoteDevice
+  readonly property bool remotePlaybackIsLocal: builtInReceiverEnabled
+    && !!remoteDevice
     && Api.isLocalPlaybackDevice(remoteDevice, deviceName,
       localRuntimeDeviceName, localDeviceId)
   readonly property bool useRemotePlayback: !!remotePlayback
     && !!remoteDevice && remoteDevice.active === true
     && !remotePlaybackIsLocal
     && !(hasLocalPlayer && activePlayer.isPlaying)
+  readonly property bool soloistPlaybackActive: soloistReceiverEnabled
+    && soloistManager.running && soloistManager.activeDevice && useRemotePlayback
   readonly property bool hasPlayer: useRemotePlayback || hasLocalPlayer
   readonly property bool hasMedia: useRemotePlayback
     ? !!remoteTrack
@@ -580,8 +585,8 @@ Item {
     for (var i = 0; i < rows.length; i++) {
       var item = rows[i]
       if (!item) continue
-      var local = item.local === true || Api.isLocalPlaybackDevice(item,
-        previousName, localRuntimeDeviceName, localDeviceId)
+      var local = builtInReceiverEnabled && (item.local === true || Api.isLocalPlaybackDevice(item,
+        previousName, localRuntimeDeviceName, localDeviceId))
       if (!local) {
         result.push(item)
         continue
@@ -1205,6 +1210,7 @@ Item {
   }
 
   function volumeFlushTarget() {
+    if (soloistPlaybackActive) return "local"
     if (sonosControlAvailable && sonosControlDevice && sonosControlDevice.id)
       return "sonos"
     return useRemotePlayback ? "remote" : "local"
@@ -1225,6 +1231,10 @@ Item {
       remoteSerial = beginRemoteVolume(remotePercent)
       var receiver = findDiscoveredReceiver(remoteDevice)
       if (receiver) spotifyConnectManager.rememberVolume(receiver.id, remotePercent)
+    }
+    if (soloistPlaybackActive) {
+      soloistManager.control(["volume", String(Math.round(normalized * 100))])
+      return true
     }
     if (sendSonosControl("volume", String(Math.round(normalized * 100)))) return true
     if (localVolume)
@@ -1269,7 +1279,7 @@ Item {
     if (state && state.device) {
       var device = state.device
       device.sourceName = device.name
-      device.local = Api.isLocalPlaybackDevice(device, deviceName,
+      device.local = builtInReceiverEnabled && Api.isLocalPlaybackDevice(device, deviceName,
         localRuntimeDeviceName, localDeviceId)
       if (device.local && device.id) {
         localDeviceId = device.id
@@ -2654,7 +2664,7 @@ Item {
     var item = value || {}
     var rawName = String(item.name || "Spotify device")
     var id = String(item.id || "")
-    var local = Api.isLocalPlaybackDevice({ id: id, name: rawName },
+    var local = builtInReceiverEnabled && Api.isLocalPlaybackDevice({ id: id, name: rawName },
       deviceName, localRuntimeDeviceName, localDeviceId)
     if (local) {
       if (id) localDeviceId = id
@@ -2737,7 +2747,7 @@ Item {
       var item = local[k]
       if (present[String(item.id || "")]) continue
       var rawName = String(item.name || "Spotify Connect device")
-      var isLocal = Api.isLocalPlaybackDevice({ id: item.id, name: rawName },
+      var isLocal = builtInReceiverEnabled && Api.isLocalPlaybackDevice({ id: item.id, name: rawName },
         deviceName, localRuntimeDeviceName, localDeviceId)
       if (isLocal) {
         localDeviceId = String(item.id || localDeviceId)
@@ -3535,6 +3545,10 @@ Item {
     noteActivity()
     if (sendSonosControl(playing ? "pause" : "play", "")) return
     if (!hasMedia && resumeLastPlayed()) return
+    if (soloistPlaybackActive) {
+      soloistManager.control([playing ? "pause" : "play"])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer && activePlayer.canTogglePlaying) {
       activePlayer.togglePlaying()
       return
@@ -3546,6 +3560,10 @@ Item {
   function next() {
     noteActivity()
     if (sendSonosControl("next", "")) return
+    if (soloistPlaybackActive) {
+      soloistManager.control(["next"])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer && activePlayer.canGoNext) activePlayer.next()
     else remotePlayerAction("POST", "/me/player/next", controlQuery())
   }
@@ -3553,6 +3571,10 @@ Item {
   function previous() {
     noteActivity()
     if (sendSonosControl("previous", "")) return
+    if (soloistPlaybackActive) {
+      soloistManager.control(["prev"])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer && activePlayer.canGoPrevious) activePlayer.previous()
     else remotePlayerAction("POST", "/me/player/previous", controlQuery())
   }
@@ -3584,6 +3606,10 @@ Item {
     noteActivity()
     var remoteSerial = useRemotePlayback ? beginRemoteSeek(value) : 0
     if (sendSonosControl("seek", String(Math.round(value)))) return
+    if (soloistPlaybackActive) {
+      soloistManager.control(["seek", String(Math.round(value * 1000))])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer
         && activePlayer.canSeek && activePlayer.positionSupported)
       activePlayer.position = value
@@ -3622,6 +3648,10 @@ Item {
     var enabled = value === true
     noteActivity()
     if (sendSonosControl("mode", sonosPlayMode(repeatMode, enabled))) return
+    if (soloistPlaybackActive) {
+      soloistManager.control(["shuffle", enabled ? "on" : "off"])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer && activePlayer.shuffleSupported)
       activePlayer.shuffle = enabled
     else remotePlayerAction("PUT", "/me/player/shuffle",
@@ -3632,6 +3662,10 @@ Item {
     var nextMode = repeatMode === "off" ? "context" : (repeatMode === "context" ? "track" : "off")
     noteActivity()
     if (sendSonosControl("mode", sonosPlayMode(nextMode, shuffle))) return
+    if (soloistPlaybackActive) {
+      soloistManager.control(["repeat", nextMode])
+      return
+    }
     if (!useRemotePlayback && hasLocalPlayer && activePlayer.loopSupported) {
       activePlayer.loopState = nextMode === "track" ? MprisLoopState.Track
         : (nextMode === "context" ? MprisLoopState.Playlist : MprisLoopState.None)
@@ -4428,6 +4462,14 @@ Item {
     id: soloistManager
     pluginDir: root.pluginDir
     deviceName: root.deviceName
+    onPlaybackUpdated: payload => {
+      if (root.soloistReceiverEnabled)
+        root.applyPlaybackState(payload)
+    }
+    onActiveDeviceChanged: {
+      if (!activeDevice && root.auth.loggedIn && !root.remotePlaybackLoading)
+        root.loadPlaybackState()
+    }
     onSetupSucceeded: {
       if (soloistManager.loggedIn) {
         root.succeed("Spotify Soloist active and ready")

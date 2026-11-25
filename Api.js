@@ -2292,3 +2292,139 @@ function mergeUnique(existing, incoming) {
   }
   return result
 }
+
+function parseSoloistTraceLine(line) {
+  var text = String(line || "").trim()
+  if (!text) return null
+  var start = text.indexOf("{")
+  if (start < 0) return null
+  var parsed = parseJson(text.slice(start), null)
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null
+}
+
+function soloistUriId(uri) {
+  var match = String(uri || "").match(/^spotify:[a-z_]+:([A-Za-z0-9]+)$/)
+  return match ? match[1] : ""
+}
+
+function soloistCoverImages(covers) {
+  var rows = Array.isArray(covers) ? covers : []
+  var images = []
+  for (var i = 0; i < rows.length; i++) {
+    var entry = rows[i]
+    if (!entry || !entry.url) continue
+    var size = String(entry.size || "").toLowerCase()
+    var dim = size === "small" ? 64 : (size === "large" || size === "xlarge" ? 640 : 300)
+    images.push({ url: String(entry.url), width: dim, height: dim })
+  }
+  return images
+}
+
+function soloistEventToWebApiPayload(msg, fallbackDeviceId, fallbackDeviceName) {
+  if (!msg || typeof msg !== "object" || msg.type !== "playback_state") return null
+  var playing = String(msg.status || "").toLowerCase() === "playing"
+  var rawItem = msg.item && typeof msg.item === "object" ? msg.item : null
+  var item = null
+  var durationMs = 0
+  if (rawItem && rawItem.uri) {
+    var uri = String(rawItem.uri)
+    var dec = rawItem.decorations && typeof rawItem.decorations === "object"
+      ? rawItem.decorations : ({})
+    var rawType = String(rawItem.entity_type || "track").toLowerCase()
+    var itemType = ["track", "episode", "chapter"].indexOf(rawType) >= 0 ? rawType : "track"
+    var id = soloistUriId(uri)
+    var name = String((dec.identity && dec.identity.name) || "Untitled")
+    var images = soloistCoverImages(dec.visual_identity && dec.visual_identity.cover)
+    durationMs = Math.max(0, Number(dec.playback && dec.playback.duration_ms) || 0)
+    var artists = []
+    var creators = Array.isArray(dec.creators) ? dec.creators : []
+    for (var i = 0; i < creators.length; i++) {
+      var entity = creators[i] && creators[i].entity ? creators[i].entity : null
+      if (!entity) continue
+      var aUri = String(entity.uri || "")
+      var aName = String((entity.decorations && entity.decorations.identity
+        && entity.decorations.identity.name) || "")
+      if (!aName) continue
+      artists.push({
+        id: soloistUriId(aUri),
+        uri: aUri,
+        type: "artist",
+        name: aName
+      })
+    }
+    var parentEntity = dec.parent && dec.parent.entity ? dec.parent.entity : null
+    var parentUri = String((parentEntity && parentEntity.uri) || "")
+    var parentName = String((parentEntity && parentEntity.decorations
+      && parentEntity.decorations.identity
+      && parentEntity.decorations.identity.name) || "")
+    var externalUrl = id ? "https://open.spotify.com/" + itemType + "/" + id : ""
+    item = {
+      id: id,
+      uri: uri,
+      type: itemType,
+      name: name,
+      artists: artists,
+      images: images,
+      duration_ms: durationMs,
+      external_urls: externalUrl ? { spotify: externalUrl } : ({})
+    }
+    if (itemType === "track") {
+      item.album = {
+        id: soloistUriId(parentUri),
+        uri: parentUri,
+        type: "album",
+        name: parentName,
+        artists: artists,
+        images: images
+      }
+    } else if (itemType === "episode") {
+      item.show = {
+        id: soloistUriId(parentUri),
+        uri: parentUri,
+        type: "show",
+        name: parentName,
+        images: images
+      }
+    } else if (itemType === "chapter") {
+      item.audiobook = {
+        id: soloistUriId(parentUri),
+        uri: parentUri,
+        type: "audiobook",
+        name: parentName,
+        images: images
+      }
+    }
+  }
+  var pos = msg.position && typeof msg.position === "object" ? msg.position : ({})
+  var baseMs = Math.max(0, Number(pos.position_ms) || 0)
+  var ts = Number(pos.timestamp_ms) || 0
+  var speed = Number(pos.speed)
+  if (!isFinite(speed) || speed <= 0) speed = 1
+  var progressMs = baseMs
+  if (playing && ts > 0) {
+    var elapsed = Math.max(0, Math.min(30000, Date.now() - ts))
+    progressMs += elapsed * speed
+  }
+  if (durationMs > 0) progressMs = Math.min(durationMs, progressMs)
+  var opts = msg.options && typeof msg.options === "object" ? msg.options : ({})
+  var repeat = String(opts.repeat || "off").toLowerCase()
+  if (["off", "track", "context"].indexOf(repeat) < 0) repeat = "off"
+  var vol = normalizeVolumePercent(msg.volume)
+  return {
+    device: {
+      id: String(fallbackDeviceId || ""),
+      name: String(fallbackDeviceName || "Quick Spotify"),
+      type: "Speaker",
+      is_active: msg.is_active === true,
+      is_restricted: false,
+      volume_percent: vol,
+      supports_volume: true
+    },
+    item: item,
+    is_playing: playing,
+    progress_ms: Math.round(progressMs),
+    repeat_state: repeat,
+    shuffle_state: opts.shuffle === true,
+    context: msg.context && msg.context.uri ? { uri: String(msg.context.uri) } : null
+  }
+}

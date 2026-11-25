@@ -15,10 +15,12 @@ Item {
 
   property string pluginDir: ""
   property string deviceName: "Quick Spotify"
+  property string deviceId: ""
   property bool installed: false
   property bool keyConfigured: false
   property bool running: false
   property bool loggedIn: false
+  property bool activeDevice: false
   property bool unitReady: false
   property bool desktopHelperAvailable: false
   property string version: ""
@@ -31,6 +33,7 @@ Item {
   signal setupSucceeded()
   signal setupFailed(string reason)
   signal paired()
+  signal playbackUpdated(var payload)
   signal clipboardLoaded(string text)
 
   function safeError(value) {
@@ -121,6 +124,35 @@ Item {
     helperProc.running = true
   }
 
+  function control(args) {
+    if (!pluginDir || !running || !Array.isArray(args) || !args.length) return false
+    var cmd = ["/usr/bin/env", "bash",
+      pluginDir + "/scripts/soloist-runtime.sh", "ctl"]
+    for (var i = 0; i < args.length; i++) cmd.push(String(args[i]))
+    Quickshell.execDetached(cmd)
+    return true
+  }
+
+  function handleTraceLine(line) {
+    var msg = Api.parseSoloistTraceLine(line)
+    if (!msg) return
+    if (msg.type === "auth_state") {
+      var wasLoggedIn = root.loggedIn
+      root.loggedIn = msg.logged_in === true
+      root.activeDevice = msg.is_active === true
+      if (!wasLoggedIn && root.loggedIn)
+        root.paired()
+      return
+    }
+    if (msg.type === "playback_state") {
+      root.activeDevice = msg.is_active === true
+      if (msg.is_active === true) {
+        var payload = Api.soloistEventToWebApiPayload(msg, root.deviceId, root.deviceName)
+        if (payload) root.playbackUpdated(payload)
+      }
+    }
+  }
+
   onPluginDirChanged: if (pluginDir) refresh()
   onDeviceNameChanged: if (pluginDir && unitReady) configureDeviceName(deviceName)
 
@@ -130,6 +162,30 @@ Item {
     repeat: true
     running: !!root.pluginDir && (root.keyConfigured || root.running)
     onTriggered: root.refresh()
+  }
+
+  Process {
+    id: traceProc
+    running: !!root.pluginDir && root.running
+    command: ["/usr/bin/env", "bash",
+      root.pluginDir + "/scripts/soloist-runtime.sh", "trace"]
+    stdout: SplitParser {
+      onRead: function(line) { root.handleTraceLine(line) }
+    }
+    onExited: {
+      root.activeDevice = false
+      if (root.running) traceReconnectTimer.restart()
+    }
+  }
+
+  Timer {
+    id: traceReconnectTimer
+    interval: 2500
+    repeat: false
+    onTriggered: {
+      if (root.pluginDir && root.running && !traceProc.running)
+        traceProc.running = true
+    }
   }
 
   Process {
@@ -151,6 +207,8 @@ Item {
       root.unitReady = parsed.unitReady === true
       root.desktopHelperAvailable = parsed.desktopHelperAvailable === true
       root.version = String(parsed.version || "")
+      if (parsed.deviceId) root.deviceId = String(parsed.deviceId)
+      if (!root.running) root.activeDevice = false
       if (!wasLoggedIn && root.loggedIn)
         root.paired()
     }

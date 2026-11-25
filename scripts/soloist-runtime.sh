@@ -165,6 +165,10 @@ case $cmd in
       desktop_helper=true
     fi
     dev_name=$(read_device_name)
+    dev_id=""
+    if [[ -f "$soloist_data_dir/.device_id" ]]; then
+      dev_id=$(tr -d '\r\n[:space:]' <"$soloist_data_dir/.device_id" 2>/dev/null || true)
+    fi
     python3 -c 'import json,sys; print(json.dumps({
       "installed": sys.argv[1] == "true",
       "keyConfigured": sys.argv[2] == "true",
@@ -172,9 +176,10 @@ case $cmd in
       "loggedIn": sys.argv[4] == "true",
       "version": sys.argv[5],
       "deviceName": sys.argv[6],
-      "unitReady": sys.argv[7] == "true",
-      "desktopHelperAvailable": sys.argv[8] == "true"
-    }))' "$installed" "$key_configured" "$running" "$logged_in" "$version" "$dev_name" "$([[ -f $unit_file ]] && echo true || echo false)" "$desktop_helper"
+      "deviceId": sys.argv[7],
+      "unitReady": sys.argv[8] == "true",
+      "desktopHelperAvailable": sys.argv[9] == "true"
+    }))' "$installed" "$key_configured" "$running" "$logged_in" "$version" "$dev_name" "$dev_id" "$([[ -f $unit_file ]] && echo true || echo false)" "$desktop_helper"
     ;;
 
   install)
@@ -281,6 +286,16 @@ case $cmd in
     if [[ -n $bin_path ]] && systemctl --user is-active --quiet "$unit_name" 2>/dev/null; then
       "$bin_path" ctl -D "$soloist_data_dir" activate >/dev/null 2>&1 || true
     fi
+    ;;
+
+  trace)
+    bin_path=$(resolve_soloist_bin || exit 1)
+    exec "$bin_path" ctl -D "$soloist_data_dir" trace
+    ;;
+
+  ctl)
+    bin_path=$(resolve_soloist_bin || exit 1)
+    exec "$bin_path" ctl -D "$soloist_data_dir" "$@"
     ;;
 
   launch-pair-helper)
