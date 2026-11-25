@@ -60,6 +60,8 @@ Item {
   property string draftClientId: ""
   property string draftDeviceName: "Omarchy Spotify"
   property bool draftBuiltInReceiver: true
+  property bool draftSoloistReceiver: false
+  property string draftSoloistApiKey: ""
   property string draftIdleMinutes: "15"
   property bool draftShowMiniPlayer: true
   property bool draftShowArtwork: true
@@ -199,6 +201,7 @@ Item {
     draftClientId = String(service.settings.clientId || "")
     draftDeviceName = service.deviceName
     draftBuiltInReceiver = service.builtInReceiverEnabled
+    draftSoloistReceiver = service.soloistReceiverEnabled
     draftIdleMinutes = String(service.idleShutdownMinutes)
     draftShowMiniPlayer = service.showMiniPlayer
     draftShowArtwork = service.artworkEnabled
@@ -221,6 +224,7 @@ Item {
     var values = {
       deviceName: String(draftDeviceName || "").trim() || "Omarchy Spotify",
       builtInReceiver: draftBuiltInReceiver ? "On" : "Off",
+      soloistReceiver: draftSoloistReceiver ? "On" : "Off",
       idleShutdownMinutes: Math.max(0, Math.min(1440,
         Math.floor(Number(draftIdleMinutes) || 0))),
       showMiniPlayer: draftShowMiniPlayer ? "On" : "Off",
@@ -2046,6 +2050,18 @@ Item {
 
 
   Connections {
+    target: root.service ? root.service.soloist : null
+    ignoreUnknownSignals: true
+    function onClipboardLoaded(text) {
+      if (text) root.draftSoloistApiKey = text
+    }
+    function onSetupSucceeded() {
+      root.draftSoloistApiKey = ""
+      root.syncDraftSettings()
+    }
+  }
+
+  Connections {
     target: root.service
     ignoreUnknownSignals: true
     function onPlaylistsChanged() { root.restorePlaylistSelection() }
@@ -3866,7 +3882,7 @@ Item {
               anchors.right: parent.right
               anchors.top: pageHeader.bottom
               anchors.topMargin: visible ? Style.space(6) : 0
-              implicitHeight: visible ? messageText.implicitHeight + Style.space(12) : 0
+              implicitHeight: visible ? Math.max(messageText.implicitHeight, soloistQuickFixBtn.visible ? soloistQuickFixBtn.implicitHeight : 0) + Style.space(12) : 0
               height: implicitHeight
               visible: root.service && (root.service.lastError !== "" || root.service.statusMessage !== "")
               color: root.service && root.service.lastError !== ""
@@ -3878,13 +3894,28 @@ Item {
 
               Text {
                 id: messageText
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: soloistQuickFixBtn.visible ? soloistQuickFixBtn.left : parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 anchors.margins: Style.space(6)
                 text: !root.service ? "" : (root.service.lastError || root.service.statusMessage)
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.WordWrap
+              }
+
+              Button {
+                id: soloistQuickFixBtn
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: Style.space(6)
+                visible: root.service && root.service.audioKeyBlocked && root.currentTab !== "setup"
+                text: "Set up Soloist →"
+                iconText: "󰓃"
+                foreground: root.foreground
+                selected: true
+                onClicked: root.chooseTab("setup")
               }
             }
 
@@ -6587,6 +6618,132 @@ Item {
               onClicked: {
                 root.draftBuiltInReceiver = !root.draftBuiltInReceiver
                 root.persistDraftSettings()
+              }
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Text {
+                text: "SPOTIFY SOLOIST · OFFICIAL LOCAL PLAYBACK & LOSSLESS"
+                color: root.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              Text {
+                width: parent.width
+                text: "Recommended when Spotify blocks legacy librespot audio keys. Downloads Spotify's official Soloist receiver automatically and pairs locally without phone or firewall setup."
+                color: root.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.WordWrap
+              }
+
+              BorderSurface {
+                width: parent.width
+                implicitHeight: soloistStatusLabel.implicitHeight + Style.space(14)
+                color: Style.normalFillFor(root.foreground, root.accent)
+                borderSpec: Border.controlSpec("normal", root.foreground, root.accent)
+                radius: Style.cornerRadius
+
+                Text {
+                  id: soloistStatusLabel
+                  anchors.fill: parent
+                  anchors.margins: Style.space(7)
+                  text: !root.service ? "Soloist unavailable"
+                    : (root.service.soloist.setupBusy
+                      ? "Downloading & activating Spotify Soloist…"
+                      : (root.service.soloist.running
+                        ? "Soloist receiver active"
+                          + (root.service.soloist.version ? " · v" + root.service.soloist.version : "")
+                        : (root.service.soloist.keyConfigured
+                          ? "Soloist API key saved · receiver idle"
+                          : "No Soloist API key configured yet")))
+                  color: root.service && root.service.soloist.running ? root.accent : root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  wrapMode: Text.WordWrap
+                }
+              }
+
+              Row {
+                spacing: Style.space(7)
+
+                Button {
+                  text: "1. Get Soloist API Key"
+                  iconText: "󰖟"
+                  foreground: root.foreground
+                  tooltipText: "Open developer.spotify.com/documentation/soloist in your browser"
+                  onClicked: if (root.service) root.service.soloist.openDocs()
+                }
+
+                Button {
+                  visible: root.service && root.service.soloist.keyConfigured
+                  text: "Soloist receiver · " + (root.draftSoloistReceiver ? "On" : "Off")
+                  iconText: "󰓃"
+                  foreground: root.foreground
+                  selected: root.draftSoloistReceiver
+                  onClicked: {
+                    root.draftSoloistReceiver = !root.draftSoloistReceiver
+                    if (root.draftSoloistReceiver) root.draftBuiltInReceiver = false
+                    root.persistDraftSettings()
+                  }
+                }
+
+                Button {
+                  visible: root.service && root.service.soloist.keyConfigured
+                  enabled: root.service && !root.service.soloist.busy
+                  text: "Clear key"
+                  iconText: "󰆴"
+                  foreground: root.foreground
+                  onClicked: if (root.service) root.service.clearSoloistSetup()
+                }
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(7)
+
+                TextField {
+                  id: soloistKeyField
+                  width: Math.max(Style.space(180), parent.width - pasteKeyBtn.width - saveSoloistBtn.width - parent.spacing * 2)
+                  foreground: root.foreground
+                  echoMode: TextInput.Password
+                  placeholderText: root.service && root.service.soloist.keyConfigured
+                    ? "Replace saved Soloist API key…"
+                    : "Paste Spotify Soloist API key…"
+                  text: root.draftSoloistApiKey
+                  onTextEdited: root.draftSoloistApiKey = text
+                  onAccepted: if (saveSoloistBtn.enabled) saveSoloistBtn.clicked()
+                }
+
+                Button {
+                  id: pasteKeyBtn
+                  text: "Paste"
+                  iconText: "󰆒"
+                  foreground: root.foreground
+                  enabled: root.service && !root.service.soloist.busy
+                  tooltipText: "Paste Soloist API key from Wayland/X11 clipboard"
+                  onClicked: if (root.service) root.service.soloist.readClipboard()
+                }
+
+                Button {
+                  id: saveSoloistBtn
+                  text: root.service && root.service.soloist.setupBusy
+                    ? "Activating…" : "2. Save & Activate"
+                  iconText: "󰄬"
+                  foreground: root.foreground
+                  selected: root.draftSoloistApiKey.trim().length >= 16
+                  enabled: root.service && !root.service.soloist.busy
+                    && root.draftSoloistApiKey.trim().length >= 16
+                  onClicked: {
+                    if (root.service)
+                      root.service.setupSoloistKey(root.draftSoloistApiKey, root.draftDeviceName)
+                  }
+                }
               }
             }
 

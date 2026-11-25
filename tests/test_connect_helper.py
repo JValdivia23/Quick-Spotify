@@ -522,6 +522,33 @@ class ConnectHelperTests(unittest.TestCase):
         self.assertEqual(devices, [])
         request.assert_not_called()
 
+    def test_discover_receivers_allows_loopback_for_local_soloist_record(self) -> None:
+        dump = (
+            "=;lo;IPv4;Quick Spotify Soloist Loopback;_spotify-connect._tcp;local;"
+            "localhost;127.0.0.1;41234;\"CPath=/zc/0\" \"VERSION=1.0\"\n"
+        )
+        info = {
+            "status": 101,
+            "deviceID": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            "remoteName": "Quick Spotify",
+            "deviceType": "SPEAKER",
+            "brandDisplayName": "Spotify",
+            "modelDisplayName": "Soloist",
+            "tokenType": "accesstoken",
+            "clientID": "65b708073fc0480ea92a077233ca87bd",
+            "publicKey": "abc",
+        }
+        with mock.patch.object(helper, "browse_spotify_connect", return_value=dump), \
+                mock.patch.object(helper, "request_json", return_value=info) as request:
+            devices = helper.discover_receivers()
+
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0]["address"], "127.0.0.1")
+        self.assertEqual(devices[0]["name"], "Quick Spotify")
+        request.assert_called_once_with(
+            "127.0.0.1", 41234, "/zc/0?action=getInfo&version=1.0", allow_loopback=True
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

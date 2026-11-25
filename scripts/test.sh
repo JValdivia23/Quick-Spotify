@@ -39,7 +39,7 @@ cp "$source_root/"*.qml "$source_root/"*.js "$lint_import_root/app/plugin/"
 cp "$source_root/standalone/shell.qml" "$lint_import_root/app/shell.qml"
 
 "$qmllint_bin" -I "$lint_import_root" Api.js OAuth.js AuthManager.qml \
-  NativeSession.qml SpotifyApi.qml SearchController.qml FilterScanController.qml SpotifyConnectManager.qml DaemonManager.qml BackendClient.qml Service.qml \
+  NativeSession.qml SpotifyApi.qml SearchController.qml FilterScanController.qml SpotifyConnectManager.qml DaemonManager.qml SoloistManager.qml BackendClient.qml Service.qml \
   BarWidget.qml PlaybackSlider.qml ArtistLinks.qml MediaByline.qml MediaRow.qml MediaCollection.qml \
   ArtistSearchSection.qml LyricsInstallPrompt.qml RetryImage.qml ShortcutHint.qml \
   TransportButton.qml Panel.qml "$lint_import_root/app/shell.qml"

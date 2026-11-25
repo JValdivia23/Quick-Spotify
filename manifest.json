@@ -31,6 +31,7 @@
     "defaults": {
       "deviceName": "Omarchy Spotify",
       "builtInReceiver": "On",
+      "soloistReceiver": "Off",
       "idleShutdownMinutes": 15,
       "showMiniPlayer": "On",
       "showVinylRecord": "Off",
@@ -65,6 +66,17 @@
         ],
         "defaultValue": "On",
         "description": "Turn off to stop Omarchy Spotify from auto-starting its built-in librespot receiver (for example, when using Spotify Soloist or external Connect speakers)."
+      },
+      {
+        "key": "soloistReceiver",
+        "type": "enum",
+        "label": "Spotify Soloist local receiver",
+        "options": [
+          "On",
+          "Off"
+        ],
+        "defaultValue": "Off",
+        "description": "Manage an official headless Spotify Soloist receiver on demand for local playback and Lossless audio."
       },
       {
         "key": "idleShutdownMinutes",

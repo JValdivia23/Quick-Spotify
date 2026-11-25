@@ -20,6 +20,8 @@ ShellRoot {
   property var settingsEntry: ({
     id: "quickshell.spotify",
     deviceName: "Quick Spotify",
+    builtInReceiver: "On",
+    soloistReceiver: "Off",
     idleShutdownMinutes: 15,
     showMiniPlayer: "On",
     showVinylRecord: "Off",

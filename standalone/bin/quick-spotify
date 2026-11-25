@@ -88,6 +88,7 @@ Commands:
   volume-up       Raise Spotify volume by 5%
   volume-down     Lower Spotify volume by 5%
   mute            Toggle mute on Spotify volume
+  setup-soloist   Configure Spotify Soloist API key for official local playback
   status          Print current playback state as JSON
   daemon          Run the Quickshell host in the foreground
   restart         Restart the background Quickshell host
@@ -143,6 +144,39 @@ case $cmd in
   mute)
     ensure_daemon
     ipc_call mute >/dev/null
+    ;;
+  setup-soloist)
+    if [[ -t 0 ]]; then
+      echo "Generate a personal Soloist API key at: https://developer.spotify.com/documentation/soloist"
+      read -rsp "Paste Spotify Soloist API key: " soloist_key
+      echo ""
+    else
+      IFS= read -r soloist_key || true
+    fi
+    printf '%s\n' "$soloist_key" | "$APP_ROOT/scripts/soloist-runtime.sh" setup-key --device-name "Quick Spotify"
+    soloist_key=""
+    config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/quick-spotify"
+    mkdir -p -m 700 -- "$config_dir"
+    python3 -c '
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+data = {}
+if p.exists():
+    try: data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception: data = {}
+data["id"] = "quickshell.spotify"
+data["builtInReceiver"] = "Off"
+data["soloistReceiver"] = "On"
+p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+' "$config_dir/settings.json"
+    if is_running; then
+      "$qs_bin" kill -p "$SHELL_DIR" >/dev/null 2>&1 || true
+      rm -rf "$SHELL_DIR"
+      sleep 0.2
+      ensure_daemon
+      ipc_call open >/dev/null
+    fi
+    echo "Spotify Soloist configured and running!"
     ;;
   status)
     if is_running; then

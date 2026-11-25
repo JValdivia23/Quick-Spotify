@@ -1,0 +1,21 @@
+[Unit]
+Description=Spotify Soloist local playback receiver for Quick Spotify
+Documentation=https://developer.spotify.com/documentation/soloist
+After=graphical-session.target sound.target
+Wants=sound.target
+Conflicts=omarchy-spotify.service omarchy-spotifyd.service
+
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Environment=PULSE_LATENCY_MSEC=30
+EnvironmentFile=-%h/.config/quick-spotify/soloist.env
+ExecStart=%h/.local/lib/quick-spotify/run-soloist
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

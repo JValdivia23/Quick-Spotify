@@ -18,6 +18,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import stat
 import subprocess
 import sys
@@ -126,9 +127,13 @@ def avahi_unescape(value: str) -> str:
     return re.sub(r"\\([0-9]{3})", lambda match: chr(int(match.group(1))), value)
 
 
-def safe_address(value: str) -> str:
+def safe_address(value: str, allow_loopback: bool = False) -> str:
     address = ipaddress.ip_address(value)
-    if address.is_unspecified or address.is_multicast or address.is_loopback:
+    if address.is_unspecified or address.is_multicast:
+        raise ConnectError("unsafe receiver address")
+    if address.is_loopback:
+        if allow_loopback and address.version == 4:
+            return str(address)
         raise ConnectError("unsafe receiver address")
     if not (address.is_private or address.is_link_local):
         raise ConnectError("receiver is not on the local network")
@@ -148,8 +153,9 @@ def request_json(
     path: str,
     method: str = "GET",
     fields: dict[str, str] | None = None,
+    allow_loopback: bool = False,
 ) -> dict[str, Any]:
-    address = safe_address(address)
+    address = safe_address(address, allow_loopback=allow_loopback)
     path = endpoint_path(path)
     body: bytes | None = None
     headers = {"Connection": "close", "Accept": "application/json"}
@@ -280,13 +286,71 @@ def receiver_name(info: dict[str, Any], service_name: str) -> str:
 AVAHI_BROWSE_TIMEOUT_SECONDS = 8
 
 
-def browse_spotify_connect() -> str:
-    """Return Avahi's parsable `_spotify-connect._tcp` dump.
+def local_private_ipv4() -> str:
+    """Return this host's primary private IPv4 (routes over lo locally, bypassing UFW)."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("10.255.255.255", 1))
+        addr = probe.getsockname()[0]
+        if ipaddress.ip_address(addr).is_private:
+            return addr
+    except OSError:
+        pass
+    finally:
+        probe.close()
+    return "127.0.0.1"
 
-    `--terminate --resolve` waits until every discovered service is resolved or
-    Avahi gives up, which on a busy LAN can exceed a few seconds. Keep stdout
-    from a timed-out browse so already-resolved speakers are not discarded.
+
+def local_soloist_avahi_lines() -> str:
+    """Synthesize `_spotify-connect._tcp` record(s) for a running local Soloist unit.
+
+    Allows pairing and discovery on the local machine even when `ufw` blocks
+    LAN mDNS (`5353/udp`) or Soloist's ephemeral ZeroConf TCP port.
     """
+    unit = "quick-spotify-soloist.service"
+    try:
+        active = subprocess.run(
+            ["systemctl", "--user", "is-active", "--quiet", unit],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            check=False,
+        )
+        if active.returncode != 0:
+            return ""
+        logs = subprocess.run(
+            ["journalctl", "--user", "-u", unit, "-n", "40", "--no-pager", "-o", "cat"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        matches = re.findall(
+            r"Started ZeroConf service on port (\d{1,5}) path (/\S*)",
+            logs.stdout or "",
+        )
+        if not matches:
+            return ""
+        port, cpath = matches[-1]
+        host_ip = local_private_ipv4()
+        lines = [
+            f'=;lo;IPv4;Quick Spotify Soloist;_spotify-connect._tcp;local;localhost;{host_ip};{port};"CPath={cpath}" "VERSION=1.0"\n'
+        ]
+        if host_ip != "127.0.0.1":
+            lines.append(
+                f'=;lo;IPv4;Quick Spotify Soloist Loopback;_spotify-connect._tcp;local;localhost;127.0.0.1;{port};"CPath={cpath}" "VERSION=1.0"\n'
+            )
+        return "".join(lines)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def browse_spotify_connect() -> str:
+    """Return Avahi's parsable `_spotify-connect._tcp` dump plus local Soloist."""
+    local_lines = local_soloist_avahi_lines()
     command = [
         "avahi-browse", "--resolve", "--parsable", "--terminate",
         "_spotify-connect._tcp",
@@ -302,15 +366,18 @@ def browse_spotify_connect() -> str:
             check=False,
             env={**os.environ, "LC_ALL": "C.UTF-8"},
         )
-        return result.stdout or ""
+        return (result.stdout or "") + local_lines
     except subprocess.TimeoutExpired as error:
         stdout = error.stdout or ""
         if isinstance(stdout, bytes):
             stdout = stdout.decode("utf-8", errors="replace")
-        if stdout.strip():
-            return stdout
+        combined = stdout + local_lines
+        if combined.strip():
+            return combined
         raise ConnectError("Spotify Connect discovery is unavailable") from error
     except OSError as error:
+        if local_lines.strip():
+            return local_lines
         raise ConnectError("Spotify Connect discovery is unavailable") from error
 
 
@@ -325,8 +392,9 @@ def discover_receivers(include_volume: bool = False) -> list[dict[str, Any]]:
         if len(parts) != 10:
             continue
         service_name = avahi_unescape(parts[3])
+        is_local_interface = parts[1] == "lo"
         try:
-            address = safe_address(parts[7])
+            address = safe_address(parts[7], allow_loopback=is_local_interface)
             # Avahi often labels an IPv4 A record as IPv6 when AAAA resolve
             # fails. Keep the speaker if the resolved address is IPv4.
             if ipaddress.ip_address(address).version != 4:
@@ -338,7 +406,10 @@ def discover_receivers(include_volume: bool = False) -> list[dict[str, Any]]:
             cpath = endpoint_path(txt.get("cpath", "/"))
             version = txt.get("version", "1.0")[:32]
             query = urllib.parse.urlencode({"action": "getInfo", "version": version})
-            info = request_json(address, port, f"{cpath}?{query}")
+            if is_local_interface:
+                info = request_json(address, port, f"{cpath}?{query}", allow_loopback=True)
+            else:
+                info = request_json(address, port, f"{cpath}?{query}")
             if int(info.get("status", 0)) != 101:
                 continue
             device_id = str(info.get("deviceID") or "").strip()
@@ -402,10 +473,13 @@ def request_json_with_retry(
     method: str = "GET",
     fields: dict[str, str] | None = None,
     attempts: int = 5,
+    allow_loopback: bool = False,
 ) -> dict[str, Any]:
     last_error: ConnectError | None = None
     for attempt in range(max(1, attempts)):
         try:
+            if allow_loopback:
+                return request_json(address, port, path, method, fields, allow_loopback=True)
             return request_json(address, port, path, method, fields)
         except ConnectError as error:
             last_error = error
@@ -696,11 +770,13 @@ def activate_receiver(device_id: str, access_token: str = "") -> dict[str, Any]:
         raise ConnectError("receiver is no longer discoverable")
     username, auth_type, auth_data = load_credentials()
 
+    is_loopback = receiver.get("address") == "127.0.0.1"
     info_query = urllib.parse.urlencode({
         "action": "getInfo", "version": receiver["serviceVersion"]
     })
     info = request_json_with_retry(
-        receiver["address"], receiver["port"], f'{receiver["cpath"]}?{info_query}'
+        receiver["address"], receiver["port"], f'{receiver["cpath"]}?{info_query}',
+        allow_loopback=is_loopback,
     )
     origin_name = "Omarchy Spotify"
     token_type = str(
@@ -749,7 +825,8 @@ def activate_receiver(device_id: str, access_token: str = "") -> dict[str, Any]:
             "deviceId": hashlib.sha1(origin_name.encode("utf-8")).hexdigest(),
         }
         response = request_json_with_retry(
-            receiver["address"], receiver["port"], receiver["cpath"], "POST", fields
+            receiver["address"], receiver["port"], receiver["cpath"], "POST", fields,
+            allow_loopback=is_loopback,
         )
         status_value = int(response.get("status", 0))
         status_string = str(response.get("statusString") or "")
@@ -758,7 +835,8 @@ def activate_receiver(device_id: str, access_token: str = "") -> dict[str, Any]:
         if status_value == 203 and status_string == "ERROR-INVALID-PUBLICKEY":
             time.sleep(0.25)
             info = request_json_with_retry(
-                receiver["address"], receiver["port"], f'{receiver["cpath"]}?{info_query}'
+                receiver["address"], receiver["port"], f'{receiver["cpath"]}?{info_query}',
+                allow_loopback=is_loopback,
             )
             # A receiver may advertise access-token login before its reusable
             # credential endpoint is awake. Try a device-scoped token first,

@@ -29,9 +29,12 @@ rm -f -- "$prefix/bin/quick-spotify" \
   "$prefix/share/icons/hicolor/scalable/apps/quick-spotify.svg"
 
 if (( purge )); then
+  "$source_root/scripts/soloist-runtime.sh" clear-key >/dev/null 2>&1 || true
+  rm -f -- "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/quick-spotify-soloist.service"
+  rm -rf -- "$HOME/.local/lib/quick-spotify" "${XDG_CONFIG_HOME:-$HOME/.config}/quick-spotify"
   "$source_root/scripts/remove-runtime.sh" --purge
-  rm -rf -- "${XDG_CONFIG_HOME:-$HOME/.config}/quick-spotify"
 else
+  "$source_root/scripts/soloist-runtime.sh" stop >/dev/null 2>&1 || true
   "$source_root/scripts/remove-runtime.sh"
 fi
 

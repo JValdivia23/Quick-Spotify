@@ -41,6 +41,7 @@ Item {
   readonly property var defaultSettingValues: ({
     deviceName: "Omarchy Spotify",
     builtInReceiver: "On",
+    soloistReceiver: "Off",
     idleShutdownMinutes: 15,
     showMiniPlayer: "On",
     showVinylRecord: "Off",
@@ -63,10 +64,18 @@ Item {
 
   readonly property string deviceName: String(settings.deviceName || "Omarchy Spotify").trim() || "Omarchy Spotify"
   readonly property bool builtInReceiverEnabled: String(settings.builtInReceiver || "On") !== "Off"
+  readonly property bool soloistReceiverEnabled: String(settings.soloistReceiver || "Off") === "On"
   onBuiltInReceiverEnabledChanged: {
     if (!builtInReceiverEnabled) {
       cancelVisibleLocalDeviceRefresh()
       if (daemonManager.running) daemonManager.stop()
+    }
+  }
+  onSoloistReceiverEnabledChanged: {
+    if (!soloistReceiverEnabled) {
+      if (soloistManager.running) soloistManager.stop()
+    } else if (uiVisible && soloistManager.keyConfigured) {
+      ensureVisibleSoloistReceiver()
     }
   }
   readonly property int idleShutdownMinutes: Math.max(0, Math.min(1440,
@@ -106,7 +115,10 @@ Item {
   readonly property alias auth: authManager
   readonly property alias api: spotifyApi
   readonly property alias daemon: daemonManager
+  readonly property alias soloist: soloistManager
   readonly property alias backend: backendClient
+  readonly property bool audioKeyBlocked: backendClient.errorCode === "audio_key_unavailable"
+    || lastError.toLowerCase().indexOf("audio key") >= 0
   readonly property bool accountConnected: authManager.loggedIn
   readonly property bool sessionPending: !authManager.sessionChecked
   readonly property bool fullyConnected: daemonManager.playbackReady
@@ -521,7 +533,7 @@ Item {
   function normalizedSettings(values) {
     var next = defaults()
     var source = values || {}
-    var keys = ["deviceName", "builtInReceiver", "idleShutdownMinutes", "showMiniPlayer",
+    var keys = ["deviceName", "builtInReceiver", "soloistReceiver", "idleShutdownMinutes", "showMiniPlayer",
       "showVinylRecord", "shortcutPlayer", "shortcutHints", "showLyrics", "showArtwork", "showTrackTitle", "showArtistName",
       "showPausedTrack", "scrollBarText", "scrollSpeed", "maxBarTextWidth",
       "fixedBarWidth", "audioQuality", "clientId"]
@@ -531,6 +543,7 @@ Item {
     }
     next.deviceName = String(next.deviceName || "Omarchy Spotify").trim() || "Omarchy Spotify"
     next.builtInReceiver = String(next.builtInReceiver || "On") === "Off" ? "Off" : "On"
+    next.soloistReceiver = String(next.soloistReceiver || "Off") === "On" ? "On" : "Off"
     next.idleShutdownMinutes = Math.max(0, Math.min(1440,
       Math.floor(Number(next.idleShutdownMinutes) || 0)))
     next.showMiniPlayer = String(next.showMiniPlayer || "On") === "Off" ? "Off" : "On"
@@ -948,7 +961,56 @@ Item {
 
   property bool localPlaybackStopped: false
 
+  property bool autoPairSoloistRequested: false
+
+  function findSoloistCandidate() {
+    var targetName = String(deviceName || "Quick Spotify").trim().toLowerCase()
+    var firstUnactivated = null
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (!d || d.local || !d.id) continue
+      var dName = String(d.name || "").trim().toLowerCase()
+      if (dName === targetName || dName.indexOf("soloist") >= 0)
+        return d
+      if (d.activationRequired && !firstUnactivated)
+        firstUnactivated = d
+    }
+    return firstUnactivated
+  }
+
+  function ensureVisibleSoloistReceiver() {
+    if (!soloistReceiverEnabled || !soloistManager.keyConfigured || localPlaybackStopped)
+      return
+    if (!soloistManager.running && !soloistManager.busy)
+      soloistManager.start()
+    soloistDiscoveryTimer.restart()
+  }
+
+  function setupSoloistKey(rawKey, targetName) {
+    var cleanName = String(targetName || deviceName || "Quick Spotify").trim() || "Quick Spotify"
+    if (!soloistManager.saveApiKey(rawKey, cleanName))
+      return false
+    localPlaybackStopped = false
+    autoPairSoloistRequested = true
+    statusMessage = "Installing and starting Spotify Soloist…"
+    persistSettings({
+      deviceName: cleanName,
+      builtInReceiver: "Off",
+      soloistReceiver: "On"
+    })
+    return true
+  }
+
+  function clearSoloistSetup() {
+    autoPairSoloistRequested = false
+    soloistManager.clearKey()
+    persistSettings({ soloistReceiver: "Off" })
+    succeed("Cleared Spotify Soloist API key")
+  }
+
   function ensureVisibleLocalReceiver() {
+    if (soloistReceiverEnabled && soloistManager.keyConfigured)
+      ensureVisibleSoloistReceiver()
     if (!builtInReceiverEnabled || localPlaybackStopped || daemonManager.terminalFailure) {
       cancelVisibleLocalDeviceRefresh()
       return
@@ -2920,12 +2982,22 @@ Item {
   }
 
   function fallbackRemoteDevice() {
+    var preferredName = String(deviceName || "").trim().toLowerCase()
+    var firstAvailable = null
+    var firstActivatable = null
     for (var i = 0; i < devices.length; i++) {
       var candidate = devices[i]
-      if (candidate && !candidate.local && candidate.id && !candidate.restricted)
-        return candidate
+      if (!candidate || candidate.local || !candidate.id) continue
+      var cName = String(candidate.name || "").trim().toLowerCase()
+      if (!candidate.restricted && !candidate.activationRequired) {
+        if (preferredName && cName === preferredName) return candidate
+        if (!firstAvailable) firstAvailable = candidate
+      } else if (candidate.activationRequired && soloistReceiverEnabled) {
+        if (preferredName && cName === preferredName) firstActivatable = candidate
+        else if (!firstActivatable) firstActivatable = candidate
+      }
     }
-    return null
+    return firstAvailable || firstActivatable
   }
 
   function beginConnectAuthorization(device) {
@@ -3006,6 +3078,10 @@ Item {
       if (device.active) {
         succeed("Playing on " + device.name)
         loadPlaybackState()
+        if (pendingPlaybackBody && pendingPlaybackSerial > 0)
+          sendPendingPlayback(requested)
+      } else if (pendingPlaybackBody && pendingPlaybackSerial > 0) {
+        sendPendingPlayback(requested)
       } else {
         transferToConnectDevice(requested)
       }
@@ -3059,17 +3135,27 @@ Item {
       var idleRemote = fallbackRemoteDevice()
       if (idleRemote) {
         localActivationRequested = false
-        sendPendingPlayback(idleRemote.id)
+        if (idleRemote.activationRequired) {
+          selectDevice(idleRemote.id, false)
+        } else {
+          sendPendingPlayback(idleRemote.id)
+        }
         return
       }
       if (!devicesLoaded && !devicesLoading) {
+        if (soloistReceiverEnabled && soloistManager.keyConfigured && !soloistManager.running)
+          soloistManager.start()
+        spotifyConnectManager.refresh()
         loadDevices(function() {
           if (playbackSerial !== root.pendingPlaybackSerial || !root.pendingPlaybackBody) return
           var remoteTarget = root.chooseDevice()
           if (!remoteTarget || remoteTarget.local) remoteTarget = root.fallbackRemoteDevice()
           if (remoteTarget && !remoteTarget.local) {
             root.localActivationRequested = false
-            root.sendPendingPlayback(remoteTarget.id)
+            if (remoteTarget.activationRequired)
+              root.selectDevice(remoteTarget.id, false)
+            else
+              root.sendPendingPlayback(remoteTarget.id)
             return
           }
           root.fail("No Spotify Connect device available. Select one in Devices.")
@@ -3678,6 +3764,7 @@ Item {
     localSocketWaitTimer.stop()
     localSocketWaitAttempts = 0
     daemonManager.stop()
+    if (soloistManager.running) soloistManager.stop()
   }
 
   function login() {
@@ -4260,7 +4347,7 @@ Item {
     id: idleTimer
     interval: 60000
     repeat: true
-    running: Api.idleShutdownShouldRun(root.daemon.running, root.hasMedia,
+    running: Api.idleShutdownShouldRun(root.daemon.running || root.soloist.running, root.hasMedia,
       root.uiVisible, root.idleShutdownMinutes)
     onTriggered: {
       if (Date.now() - root.lastActivityAt >= root.idleShutdownMinutes * 60000)
@@ -4314,6 +4401,35 @@ Item {
   SpotifyConnectManager {
     id: spotifyConnectManager
     pluginDir: root.pluginDir
+  }
+
+  Timer {
+    id: soloistDiscoveryTimer
+    interval: 1200
+    repeat: false
+    onTriggered: {
+      if (!root.soloistReceiverEnabled || !root.soloistManager.running) return
+      spotifyConnectManager.refresh()
+      root.loadDevices(function() {
+        var candidate = root.findSoloistCandidate()
+        if (!candidate) return
+        if (root.autoPairSoloistRequested || (!root.selectedDeviceId && !candidate.activationRequired)) {
+          root.autoPairSoloistRequested = false
+          root.selectDevice(candidate.id, false)
+        }
+      })
+    }
+  }
+
+  SoloistManager {
+    id: soloistManager
+    pluginDir: root.pluginDir
+    deviceName: root.deviceName
+    onSetupSucceeded: {
+      root.succeed("Spotify Soloist running — connecting local speaker…")
+      soloistDiscoveryTimer.restart()
+    }
+    onSetupFailed: reason => root.fail(reason)
   }
 
   DaemonManager {

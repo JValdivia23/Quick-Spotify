@@ -18,6 +18,7 @@ Requires a personal **Spotify Premium** account (no Spotify Developer Client ID 
   - **Omarchy 4 Plugin Mode**: Retains `manifest.json` and root QML entrypoints with zero symlinks, passing `omarchy plugin validate` out of the box.
 - **Live Dynamic Theming**: Watches `~/.config/quick-spotify/colors.toml` (with automatic fallback to `~/.local/state/omarchy/current/theme/colors.toml`) for live hot-reload from **Noctalia**, **Matugen**, **Wallust**, **Pywal**, or **Omarchy**.
 - **Full Library & Connect**: Browser-paired native sign-in, playlists, Liked Songs, Discover, albums/artists, queue management, up to 320 kbps audio, and Spotify Connect speaker/Sonos control.
+- **Built-in Managed Spotify Soloist Support (Lossless + Audio-Key Fix)**: One-paste in-app setup for [Spotify Soloist](https://developer.spotify.com/documentation/soloist) when Spotify blocks legacy `librespot` eSDK v1 audio keys—auto-downloads `soloist`, runs it on demand via `systemd --user`, and pairs locally over loopback with **zero phone or UFW firewall rules**.
 
 ---
 
@@ -75,6 +76,7 @@ quick-spotify next         # Next track
 quick-spotify previous     # Previous track
 quick-spotify volume-up    # +5% Spotify volume
 quick-spotify volume-down  # -5% Spotify volume
+quick-spotify setup-soloist # Configure Spotify Soloist API key from CLI
 quick-spotify status       # JSON status for custom Waybar / bar scripts
 ```
 
