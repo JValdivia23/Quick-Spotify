@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "quickshell.spotify",
-  "name": "Omarchy Spotify",
+  "name": "Quick Spotify",
   "version": "1.1.0",
   "author": "QuickshellSpotify",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "panel": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Omarchy Spotify",
+    "displayName": "Quick Spotify",
     "description": "Spotify in Quickshell with all the features you need\u2014using about 60 MB of memory versus roughly 950 MB for the official client.",
     "category": "Media",
     "aliases": [
@@ -29,7 +29,7 @@
     "allowMultiple": false,
     "defaultSection": "left",
     "defaults": {
-      "deviceName": "Omarchy Spotify",
+      "deviceName": "Quick Spotify",
       "builtInReceiver": "On",
       "soloistReceiver": "Off",
       "idleShutdownMinutes": 15,
@@ -53,7 +53,7 @@
         "key": "deviceName",
         "type": "string",
         "label": "This computer appears as",
-        "defaultValue": "Omarchy Spotify",
+        "defaultValue": "Quick Spotify",
         "description": "Shown in Devices immediately. Spotify Connect uses the new name the next time local playback starts."
       },
       {
@@ -65,7 +65,7 @@
           "Off"
         ],
         "defaultValue": "On",
-        "description": "Turn off to stop Omarchy Spotify from auto-starting its built-in librespot receiver (for example, when using Spotify Soloist or external Connect speakers)."
+        "description": "Turn off to stop Quick Spotify from auto-starting its built-in librespot receiver (for example, when using Spotify Soloist or external Connect speakers)."
       },
       {
         "key": "soloistReceiver",

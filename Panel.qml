@@ -58,7 +58,7 @@ Item {
   readonly property bool artworkVisible: !service || service.artworkEnabled
 
   property string draftClientId: ""
-  property string draftDeviceName: "Omarchy Spotify"
+  property string draftDeviceName: "Quick Spotify"
   property bool draftBuiltInReceiver: true
   property bool draftSoloistReceiver: false
   property string draftSoloistApiKey: ""
@@ -222,7 +222,7 @@ Item {
   function saveSettings(showStatus) {
     if (!service) return
     var values = {
-      deviceName: String(draftDeviceName || "").trim() || "Omarchy Spotify",
+      deviceName: String(draftDeviceName || "").trim() || "Quick Spotify",
       builtInReceiver: draftBuiltInReceiver ? "On" : "Off",
       soloistReceiver: draftSoloistReceiver ? "On" : "Off",
       idleShutdownMinutes: Math.max(0, Math.min(1440,
@@ -324,7 +324,7 @@ Item {
   }
 
   function connectionErrorText() {
-    if (!service) return "Omarchy Spotify is unavailable"
+    if (!service) return "Quick Spotify is unavailable"
     return service.lastError || service.auth.lastError || service.daemon.lastError
   }
 
@@ -3055,7 +3055,7 @@ Item {
   FloatingWindow {
     id: window
     visible: root.opened
-    title: "Omarchy Spotify"
+    title: "Quick Spotify"
     color: root.background
     implicitWidth: 980
     implicitHeight: 720
@@ -6138,7 +6138,7 @@ Item {
             Text {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
-              text: "Omarchy Spotify"
+              text: "Quick Spotify"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
@@ -6345,7 +6345,7 @@ Item {
           Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: "Your password is entered only on Spotify's own page. Omarchy Spotify never sees it."
+            text: "Your password is entered only on Spotify's own page. Quick Spotify never sees it."
             color: root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -6576,7 +6576,7 @@ Item {
                 TextField {
                   width: parent.width
                   foreground: root.foreground
-                  placeholderText: "Omarchy Spotify"
+                  placeholderText: "Quick Spotify"
                   text: root.draftDeviceName
                   onTextEdited: root.draftDeviceName = text
                   onEditingFinished: root.persistDraftSettings()

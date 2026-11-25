@@ -50,8 +50,8 @@ return_to_spotify() {
     spotify_address=$(
       hyprctl clients -j 2>/dev/null | jq -r '
         [.[]
-          | select((.class // "") == "org.quickshell"
-            and (.title // "") == "Omarchy Spotify")
+          | select(((.class // "") == "org.quickshell" or (.class // "") == "quick-spotify")
+            and ((.title // "") == "Quick Spotify" or (.title // "") == "Omarchy Spotify"))
           | .address][0] // empty
       '
     )
